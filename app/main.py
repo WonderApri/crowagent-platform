@@ -410,24 +410,26 @@ with tab3:
         #### Financial Metrics (£)
         """)
         cost_per_saving = result['install_cost_gbp'] / result['annual_saving_gbp'] if result['annual_saving_gbp'] > 0 else 0
+        payback_display = f"{result['payback_years']:.1f}" if result['payback_years'] else "N/A"
         st.markdown(f"""
         | Item | Value |
         |------|-------|
         | Installation Cost | £{result['install_cost_gbp']:,.0f} |
         | Annual Energy Saving | £{result['annual_saving_gbp']:,.0f} |
         | Cost per Unit Saved | £{cost_per_saving:.2f}/year |
-        | Payback Period | {result['payback_years']:.1f} years |
+        | Payback Period | {payback_display} years |
         """)
     
     with col2:
         st.markdown("""
         #### Environmental Value
         """)
+        cost_per_co2 = f"£{result['cost_per_tonne_co2']:,.1f}" if result['cost_per_tonne_co2'] else "N/A"
         st.markdown(f"""
         | Metric | Value |
         |--------|-------|
         | Renewable Generation | {result['renewable_mwh']:.1f} MWh/yr |
-        | Cost per tCO₂ avoided | £{result['cost_per_tonne_co2']:,.1f} |
+        | Cost per tCO₂ avoided | {cost_per_co2} |
         | CO₂ Reduction % | {(result['carbon_saving_t'] / result['baseline_carbon_t'] * 100) if result['baseline_carbon_t'] > 0 else 0:.1f}% |
         """)
 
