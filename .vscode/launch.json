@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Streamlit: Run app",
+      "type": "python",
+      "request": "launch",
+      "module": "streamlit",
+      "args": ["run", "app/main.py"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Python: Run app/main.py",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/app/main.py",
+      "console": "integratedTerminal"
+    }
+  ]
+}
