@@ -624,7 +624,7 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
     st.markdown(
-        "<div style='font-size:0.68rem;color:#4A6880;margin-bottom:8px;'>"
+        "<div style='font-size:0.72rem;color:#4A6880;margin-bottom:8px;'>"
         "Sustainability AI Decision Intelligence Platform</div>",
         unsafe_allow_html=True,
     )
@@ -733,7 +733,7 @@ with st.sidebar:
         st.markdown(
             "<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'>"
             "<div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div>"
-            "<div style='font-size:0.68rem;color:#664D03;line-height:1.5;'>"
+            "<div style='font-size:0.72rem;color:#664D03;line-height:1.5;'>"
             "• Keys exist in your session only (cleared on browser close)<br/>"
             "• Your keys are <strong>never</strong> stored on the server<br/>"
             "• Each user enters their own key independently<br/>"
@@ -896,7 +896,7 @@ st.markdown(f"""
   <div style='display:flex;align-items:center;gap:16px;flex-wrap:wrap;'>
     {_logo_html}
     <div>
-      <div style='font-family:Rajdhani,sans-serif;font-size:0.7rem;
+      <div style='font-family:Rajdhani,sans-serif;font-size:0.74rem;
                   letter-spacing:1.5px;text-transform:uppercase;
                   color:#4A6880;line-height:1;margin-top:2px;'>
         Sustainability AI Decision Intelligence Platform
@@ -1387,7 +1387,7 @@ with _tab_ai:
                         f"<span class='ca-meta' style='margin-left:6px;'>Powered by Gemini 1.5 Flash</span>"
                         f"<br/><br/>{_msg['content']}<br/>"
                         f"<div style='margin-top:8px;padding-top:6px;border-top:1px solid #E0EBF4;"
-                        f"font-size:0.68rem;color:#8AACBF;'>"
+                        f"font-size:0.72rem;color:#8AACBF;'>"
                         f"⚠️ AI-generated content. Verify all figures independently before acting.</div>"
                         f"</div>",
                         unsafe_allow_html=True,
@@ -1629,7 +1629,7 @@ with _tab_about:
 
           <div style='margin-top:14px;background:#F8FAFC;border:1px solid #E0EBF4;
                       border-radius:5px;padding:10px 12px;'>
-            <div style='font-size:0.7rem;color:#8AACBF;font-weight:700;
+            <div style='font-size:0.74rem;color:#8AACBF;font-weight:700;
                         text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;'>
               Response Time
             </div>
@@ -1645,7 +1645,7 @@ with _tab_about:
         st.markdown(f"""
         <div style='background:#071A2F;border:1px solid #1A3A5C;border-radius:8px;
                     padding:14px 16px;'>
-          <div style='font-family:Rajdhani,sans-serif;font-size:0.7rem;font-weight:700;
+          <div style='font-family:Rajdhani,sans-serif;font-size:0.74rem;font-weight:700;
                       letter-spacing:1px;text-transform:uppercase;color:#00C2A8;
                       margin-bottom:8px;'>Build Information</div>
           <div style='font-size:0.74rem;color:#7A9BB5;line-height:1.8;'>
@@ -1675,7 +1675,7 @@ st.markdown("""
     <span style='color:#5A7A90;font-size:0.78rem;'>Sustainability AI Decision Intelligence Platform</span>
     <span style='color:#5A7A90;font-size:0.78rem;'>v2.0.0 · Working Prototype</span>
   </div>
-  <div style='font-size:0.7rem;color:#334A60;line-height:1.6;'>
+  <div style='font-size:0.74rem;color:#7A9BB5;line-height:1.6;'>
     © 2026 Aparajita Parihar · All rights reserved · Independent research project ·
     CrowAgent™ is an unregistered trademark (UK IPO Class 42, registration pending) ·
     Not licensed for commercial use without written permission
