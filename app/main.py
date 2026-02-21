@@ -721,10 +721,18 @@ with st.sidebar:
     # ── API Keys (collapsible) ────────────────────────────────────────────────
     with st.expander("🔑 API Keys (optional)", expanded=False):
         st.markdown(
-            "<div style='font-size:0.7rem;color:#4A6880;line-height:1.5;'>"
-            "Keys are stored in session memory only and never saved to disk.</div>",
+            "<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'>"
+            "<div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div>"
+            "<div style='font-size:0.68rem;color:#664D03;line-height:1.5;'>"
+            "• Keys exist in your session only (cleared on browser close)<br/>"
+            "• Your keys are <strong>never</strong> stored on the server<br/>"
+            "• Each user enters their own key independently<br/>"
+            "• Use unique, disposable API keys if sharing this link"
+            "</div></div>",
             unsafe_allow_html=True,
         )
+        st.markdown("")  # spacing
+        
         _mo_key = st.text_input(
             "Met Office DataPoint key",
             type="password", placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -736,9 +744,9 @@ with st.sidebar:
 
         _gm_key = st.text_input(
             "Gemini API key (for AI Advisor)",
-            type="password", placeholder="AIzaSyDPOySb-P2nP7IMpGfUsoV5eRFXF7o5OXw",
+            type="password", placeholder="AIzaSy... (starts with 'AIza')",
             value=st.session_state.gemini_key,
-            help="Free at aistudio.google.com",
+            help="Get free at aistudio.google.com | Never share this key | Each user brings their own",
         )
         if _gm_key != st.session_state.gemini_key:
             st.session_state.gemini_key = _gm_key
