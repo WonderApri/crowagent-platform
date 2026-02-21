@@ -731,7 +731,7 @@ with st.sidebar:
 
         _gm_key = st.text_input(
             "Gemini API key (for AI Advisor)",
-            type="password", placeholder="AIzaSy...",
+            type="password", placeholder="AIzaSyDPOySb-P2nP7IMpGfUsoV5eRFXF7o5OXw",
             value=st.session_state.gemini_key,
             help="Free at aistudio.google.com",
         )
