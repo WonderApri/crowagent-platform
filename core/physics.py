@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ═══════════════════════════════════════════════════════════════════════════════
 # CrowAgent™ Platform — Core Physics Engine
 # © 2026 Aparajita Parihar. All rights reserved.
@@ -208,3 +209,6 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
         "u_roof":              round(u_roof, 2),
         "u_glazing":           round(u_glazing, 2),
     }
+=======
+$(curl -s https://raw.githubusercontent.com/WonderApri/crowagent-platform/main/core/physics.py)
+>>>>>>> 0d19127a5867a8b39d0cb139a0ebca0ae6c50033
