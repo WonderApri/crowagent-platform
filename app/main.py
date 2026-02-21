@@ -742,12 +742,23 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
         st.markdown("")  # spacing
+        st.markdown(
+          "<div style='font-size:0.9rem;color:#4A6880;margin-bottom:8px;'>"
+          "Provide your own API keys — do not use shared or public keys. "
+          "Met Office DataPoint (free): register at "
+          "<a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
+          "Gemini API key (for AI Advisor): get one at "
+          "<a href=\"https://aistudio.google.com\" target=\"_blank\">aistudio.google.com</a> or "
+          "<a href=\"https://console.cloud.google.com/apis/credentials\" target=\"_blank\">console.cloud.google.com</a>."
+          "</div>",
+          unsafe_allow_html=True,
+        )
         
         _mo_key = st.text_input(
-            "Met Office DataPoint key",
-            type="password", placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-            value=st.session_state.met_office_key,
-            help="Free at metoffice.gov.uk/services/data/datapoint",
+          "Met Office DataPoint key",
+          type="password", placeholder="",
+          value=st.session_state.met_office_key,
+          help="Free at metoffice.gov.uk/services/data/datapoint",
         )
         if _mo_key != st.session_state.met_office_key:
             st.session_state.met_office_key = _mo_key
@@ -774,7 +785,7 @@ with st.sidebar:
             "Gemini API key (for AI Advisor)",
             type="password", placeholder="AIzaSy... (starts with 'AIza')",
             value=st.session_state.gemini_key,
-            help="Get free at aistudio.google.com | Never share this key | Each user brings their own",
+          help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
         )
         if _gm_key != st.session_state.gemini_key:
             st.session_state.gemini_key = _gm_key
