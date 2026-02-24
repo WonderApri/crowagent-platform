@@ -28,13 +28,10 @@ _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 load_dotenv(_env_path)
 
 import streamlit as st
-import pydeck as pdk
-import overpy
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 import requests
-import json
 from datetime import datetime, timezone
 
 
@@ -92,6 +89,7 @@ import services.location as loc
 import services.audit as audit
 import core.agent as crow_agent
 import core.physics as physics
+from app.visualization_3d import render_campus_3d_map
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGO LOADER
@@ -1435,48 +1433,6 @@ with _tab_dash:
 
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    # ── Interactive map (dashboard) ───────────────────────────────────────────
-    try:
-        st.markdown("<div style='font-size:0.9rem;color:#00C2A8;font-weight:700;margin:8px 0;'>🗺️ Interactive Map</div>", unsafe_allow_html=True)
-        month = st.slider("Month", 1, 12, 6, format="%d")
-
-        # use current location from session state for map centre and sample point
-        lat = float(st.session_state.wx_lat)
-        lon = float(st.session_state.wx_lon)
-
-        _all_points = [
-            {"lon": lon, "lat": lat, "radius": 100, "month": m}
-            for m in range(1, 13)
-        ]
-        data = [pt for pt in _all_points if pt["month"] == month]
-
-        layer = pdk.Layer("ScatterplotLayer",
-            data=data,
-            get_position="[lon, lat]", get_radius="radius",
-            get_fill_color=[0, 194, 168], pickable=True)
-
-        view = pdk.ViewState(latitude=lat, longitude=lon, zoom=14, pitch=45)
-        st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view,
-            map_style="https://tiles.openfreemap.org/styles/liberty"))
-
-        st.markdown("\n---\n")
-        st.markdown("### OpenStreetMap buildings (via Overpass API)")
-        if st.button("Fetch buildings around current location", key="dash_fetch"):
-            try:
-                api = overpy.Overpass()
-                lat = float(st.session_state.wx_lat)
-                lon = float(st.session_state.wx_lon)
-                query = f"""
-  way[\"building\"]({lat-0.01},{lon-0.01},{lat+0.01},{lon+0.01});
-  (._;>;); out body;
-"""
-                result = api.query(query)
-                st.success(f"Got {len(result.ways)} building ways")
-            except Exception as exc:
-                st.error(f"Overpass query failed: {exc}")
-    except Exception as exc:  # pragma: no cover - optional if pydeck not available
-        st.warning(f"Pydeck demo failed: {exc}")
-
     # ── Charts Row 1: Energy + Carbon ─────────────────────────────────────────
     c1, c2 = st.columns(2)
     with c1:
@@ -1566,6 +1522,13 @@ with _tab_dash:
             "Not specific to any real institution. Do not use for actual estate planning "
             "without site-specific survey."
         )
+
+    # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    render_campus_3d_map(
+        selected_scenario_names=selected_scenario_names,
+        weather=weather,
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════
