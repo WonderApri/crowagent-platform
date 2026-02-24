@@ -35,6 +35,8 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 import services.weather as wx
+import services.location as loc
+import services.audit as audit
 import core.agent as crow_agent
 import core.physics as physics
 
@@ -618,6 +620,43 @@ if "manual_temp" not in st.session_state:
     st.session_state.manual_temp = 10.5
 if "force_weather_refresh" not in st.session_state:
     st.session_state.force_weather_refresh = False
+# ── Weather location & provider (new in v2.1) ──────────────────────────────
+if "wx_city" not in st.session_state:
+    st.session_state.wx_city = "Reading, Berkshire"
+if "wx_lat" not in st.session_state:
+    st.session_state.wx_lat = loc.CITIES["Reading, Berkshire"]["lat"]
+if "wx_lon" not in st.session_state:
+    st.session_state.wx_lon = loc.CITIES["Reading, Berkshire"]["lon"]
+if "wx_location_name" not in st.session_state:
+    st.session_state.wx_location_name = "Reading, Berkshire, UK"
+if "wx_provider" not in st.session_state:
+    st.session_state.wx_provider = "open_meteo"
+if "wx_enable_fallback" not in st.session_state:
+    st.session_state.wx_enable_fallback = True
+if "owm_key" not in st.session_state:
+    st.session_state.owm_key = _get_secret("OWM_KEY", "")
+
+# ── Handle browser geolocation query params (injected by geo-detect JS) ────
+# GDPR: raw coords are resolved to nearest city and discarded immediately.
+_qp = st.query_params
+if "geo_lat" in _qp and "geo_lon" in _qp:
+    try:
+        _geo_lat = float(_qp["geo_lat"])
+        _geo_lon = float(_qp["geo_lon"])
+        _resolved = loc.nearest_city(_geo_lat, _geo_lon)
+        st.session_state.wx_city          = _resolved
+        st.session_state.wx_lat           = loc.CITIES[_resolved]["lat"]
+        st.session_state.wx_lon           = loc.CITIES[_resolved]["lon"]
+        st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
+        st.session_state.force_weather_refresh = True
+        audit.log_event(
+            "LOCATION_AUTO_DETECTED",
+            f"Resolved browser location to '{_resolved}' (raw coords discarded per GDPR)",
+        )
+    except Exception:
+        pass
+    # Clear geo params from URL after handling
+    st.query_params.clear()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -681,6 +720,55 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # ── Location picker ────────────────────────────────────────────────────────
+    st.markdown("<div class='sb-section'>📍 Location</div>", unsafe_allow_html=True)
+
+    _city_list = loc.city_options()
+    _city_idx  = _city_list.index(st.session_state.wx_city) if st.session_state.wx_city in _city_list else 0
+    _sel_city  = st.selectbox(
+        "City / Region", _city_list, index=_city_idx,
+        label_visibility="collapsed",
+    )
+    if _sel_city != st.session_state.wx_city:
+        _meta = loc.city_meta(_sel_city)
+        st.session_state.wx_city          = _sel_city
+        st.session_state.wx_lat           = _meta["lat"]
+        st.session_state.wx_lon           = _meta["lon"]
+        st.session_state.wx_location_name = f"{_sel_city}, {_meta['country']}"
+        st.session_state.force_weather_refresh = True
+        audit.log_event("LOCATION_CHANGED", f"City set to '{_sel_city}'")
+
+    # Manual lat/lon entry (for precise site addresses)
+    with st.expander("⚙ Custom coordinates", expanded=False):
+        _col_lat, _col_lon = st.columns(2)
+        with _col_lat:
+            _custom_lat = st.number_input(
+                "Latitude", value=float(st.session_state.wx_lat),
+                min_value=-90.0, max_value=90.0, format="%.4f", step=0.0001,
+            )
+        with _col_lon:
+            _custom_lon = st.number_input(
+                "Longitude", value=float(st.session_state.wx_lon),
+                min_value=-180.0, max_value=180.0, format="%.4f", step=0.0001,
+            )
+        if st.button("Apply coordinates", key="apply_coords", use_container_width=True):
+            st.session_state.wx_lat           = _custom_lat
+            st.session_state.wx_lon           = _custom_lon
+            st.session_state.wx_location_name = f"Custom site ({_custom_lat:.4f}, {_custom_lon:.4f})"
+            st.session_state.force_weather_refresh = True
+            audit.log_event(
+                "LOCATION_CUSTOM",
+                f"Custom coordinates set: {_custom_lat:.4f}, {_custom_lon:.4f}",
+            )
+        st.markdown(
+            "<div style='font-size:0.73rem;color:#8FBCCE;margin-top:4px;'>"
+            "Or use browser geolocation (HTTPS only):</div>",
+            unsafe_allow_html=True,
+        )
+        loc.render_geo_detect()
+
+    st.markdown("---")
+
     # ── Weather panel ──────────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>🌤 Live Weather</div>", unsafe_allow_html=True)
 
@@ -695,9 +783,23 @@ with st.sidebar:
     )
     st.session_state.manual_temp = manual_t
 
+    # Resolve Met Office site ID for selected city (if available)
+    _mo_loc_id = (
+        loc.city_meta(st.session_state.wx_city).get("mo_id", wx.MET_OFFICE_LOCATION)
+        if st.session_state.wx_city in loc.CITIES
+        else wx.MET_OFFICE_LOCATION
+    )
+
     with st.spinner("Checking weather…"):
         weather = wx.get_weather(
+            lat                 = st.session_state.wx_lat,
+            lon                 = st.session_state.wx_lon,
+            location_name       = st.session_state.wx_location_name,
+            provider            = st.session_state.wx_provider,
             met_office_key      = st.session_state.met_office_key or None,
+            met_office_location = _mo_loc_id,
+            openweathermap_key  = st.session_state.owm_key or None,
+            enable_fallback     = st.session_state.wx_enable_fallback,
             manual_temp_c       = manual_t,
             force_refresh       = st.session_state.force_weather_refresh,
         )
@@ -743,8 +845,8 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ── API Keys (collapsible) ────────────────────────────────────────────────
-    with st.expander("🔑 API Keys (optional)", expanded=False):
+    # ── API Keys & Weather Config (collapsible) ───────────────────────────────
+    with st.expander("🔑 API Keys & Weather Config", expanded=False):
         st.markdown(
             "<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'>"
             "<div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div>"
@@ -769,6 +871,76 @@ with st.sidebar:
           unsafe_allow_html=True,
         )
         
+        # ── Weather Provider selector ─────────────────────────────────────────
+        st.markdown(
+            "<div style='font-size:0.78rem;color:#8FBCCE;font-weight:700;"
+            "letter-spacing:0.5px;margin:8px 0 4px;'>WEATHER PROVIDER</div>",
+            unsafe_allow_html=True,
+        )
+        _provider_labels = {
+            "open_meteo":      "Open-Meteo (free, no key)",
+            "openweathermap":  "OpenWeatherMap (key required)",
+            "met_office":      "Met Office DataPoint (UK, key required)",
+        }
+        _provider_keys = list(_provider_labels.keys())
+        _cur_prov_idx  = _provider_keys.index(st.session_state.wx_provider) \
+                         if st.session_state.wx_provider in _provider_keys else 0
+        _sel_provider  = st.selectbox(
+            "Weather provider", _provider_keys,
+            index=_cur_prov_idx,
+            format_func=lambda k: _provider_labels[k],
+            label_visibility="collapsed",
+        )
+        if _sel_provider != st.session_state.wx_provider:
+            _prev = st.session_state.wx_provider
+            st.session_state.wx_provider = _sel_provider
+            st.session_state.force_weather_refresh = True
+            audit.log_event(
+                "PROVIDER_CHANGED",
+                f"Weather provider changed from '{_provider_labels[_prev]}' "
+                f"to '{_provider_labels[_sel_provider]}'",
+            )
+
+        # Fallback toggle
+        _fb = st.checkbox(
+            "Fall back to Open-Meteo if primary fails",
+            value=st.session_state.wx_enable_fallback,
+            key="wx_fallback_toggle",
+        )
+        if _fb != st.session_state.wx_enable_fallback:
+            st.session_state.wx_enable_fallback = _fb
+
+        st.markdown("---")
+        # ── OpenWeatherMap key ─────────────────────────────────────────────────
+        _show_owm = st.checkbox("Show OWM key", key="show_owm_key", value=False)
+        _owm_key  = st.text_input(
+            "OpenWeatherMap API key",
+            type="default" if _show_owm else "password",
+            placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            value=st.session_state.owm_key,
+            help="Free at openweathermap.org/api — 1,000 calls/day on free tier",
+        )
+        if _owm_key != st.session_state.owm_key:
+            _had_key = bool(st.session_state.owm_key)
+            st.session_state.owm_key = _owm_key
+            audit.log_event(
+                "KEY_UPDATED",
+                "OpenWeatherMap key " + ("updated" if _had_key else "added"),
+            )
+        if st.session_state.owm_key:
+            if st.button("Test OWM key", key="test_owm_key", use_container_width=True):
+                _ok, _msg = wx.test_openweathermap_key(
+                    st.session_state.owm_key,
+                    st.session_state.wx_lat,
+                    st.session_state.wx_lon,
+                )
+                if _ok:
+                    st.markdown("<div class='val-ok'>✓ " + _msg + "</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<div class='val-err'>❌ " + _msg + "</div>", unsafe_allow_html=True)
+
+        st.markdown("---")
+        # ── Met Office DataPoint key ───────────────────────────────────────────
         _show_mo = st.checkbox("Show Met Office key", key="show_mo_key", value=False)
         _mo_key = st.text_input(
           "Met Office DataPoint key",
@@ -777,7 +949,12 @@ with st.sidebar:
           help="Free at metoffice.gov.uk/services/data/datapoint",
         )
         if _mo_key != st.session_state.met_office_key:
+            _had_mo = bool(st.session_state.met_office_key)
             st.session_state.met_office_key = _mo_key
+            audit.log_event(
+                "KEY_UPDATED",
+                "Met Office DataPoint key " + ("updated" if _had_mo else "added"),
+            )
 
         # Validation for Met Office DataPoint key
         if st.session_state.met_office_key:
@@ -865,9 +1042,30 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # ── Config Audit Log ──────────────────────────────────────────────────────
+    _log_entries = audit.get_log(n=5)
+    if _log_entries:
+        with st.expander("🔍 Config Change Log", expanded=False):
+            st.markdown(
+                "<div style='font-size:0.72rem;color:#8FBCCE;margin-bottom:4px;'>"
+                "In-session only — cleared on browser close.</div>",
+                unsafe_allow_html=True,
+            )
+            for _entry in _log_entries:
+                st.markdown(
+                    f"<div style='font-size:0.72rem;line-height:1.5;"
+                    f"border-left:2px solid #1A3A5C;padding-left:6px;margin-bottom:4px;'>"
+                    f"<span style='color:#00C2A8;'>{_entry['action']}</span>"
+                    f"<br/><span style='color:#CBD8E6;'>{_entry['details']}</span>"
+                    f"<br/><span style='color:#5A7A90;font-size:0.68rem;'>{_entry['ts']}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
     # ── Data sources ──────────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>📚 Data Sources</div>", unsafe_allow_html=True)
-    for src in ["Open-Meteo (live weather)", "Met Office DataPoint (optional)",
+    for src in ["Open-Meteo (weather, default)", "Met Office DataPoint (UK, optional)",
+                "OpenWeatherMap (global, optional)", "GeoNames (city dataset, CC-BY)",
                 "BEIS GHG Factors 2023", "HESA Estates Stats 2022-23",
                 "CIBSE Guide A", "PVGIS (EC JRC)", "Raissi et al. (2019)"]:
         st.caption(f"· {src}")
