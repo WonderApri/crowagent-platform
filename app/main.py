@@ -28,6 +28,7 @@ _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 load_dotenv(_env_path)
 
 import streamlit as st
+import pydeck as pdk
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
@@ -905,6 +906,19 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
         loc.render_geo_detect()
+
+    # ── Pydeck map demo (static example)
+    try:
+        layer = pdk.Layer("ScatterplotLayer",
+            data=[{"lon": -1.8904, "lat": 52.4862, "radius": 100}],
+            get_position="[lon, lat]", get_radius="radius",
+            get_fill_color=[0, 194, 168], pickable=True)
+
+        view = pdk.ViewState(latitude=52.4862, longitude=-1.8904, zoom=14, pitch=45)
+        st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view,
+            map_style="https://tiles.openfreemap.org/styles/liberty"))
+    except Exception as exc:  # pragma: no cover - optional if pydeck not available
+        st.warning(f"Pydeck demo failed: {exc}")
 
     st.markdown("---")
 
