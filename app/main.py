@@ -1352,8 +1352,12 @@ with _tab_dash:
         st.markdown("<div style='font-size:0.9rem;color:#00C2A8;font-weight:700;margin:8px 0;'>🗺️ Interactive Map</div>", unsafe_allow_html=True)
         month = st.slider("Month", 1, 12, 6, format="%d")
 
+        # use current location from session state for map centre and sample point
+        lat = float(st.session_state.wx_lat)
+        lon = float(st.session_state.wx_lon)
+
         _all_points = [
-            {"lon": -1.8904, "lat": 52.4862, "radius": 100, "month": m}
+            {"lon": lon, "lat": lat, "radius": 100, "month": m}
             for m in range(1, 13)
         ]
         data = [pt for pt in _all_points if pt["month"] == month]
@@ -1363,7 +1367,7 @@ with _tab_dash:
             get_position="[lon, lat]", get_radius="radius",
             get_fill_color=[0, 194, 168], pickable=True)
 
-        view = pdk.ViewState(latitude=52.4862, longitude=-1.8904, zoom=14, pitch=45)
+        view = pdk.ViewState(latitude=lat, longitude=lon, zoom=14, pitch=45)
         st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view,
             map_style="https://tiles.openfreemap.org/styles/liberty"))
 
