@@ -317,69 +317,83 @@ def get_weather(
     """
     Return current weather data with smart provider selection and caching.
 
-    Provider priority (admin-configurable):
-      "met_office"      → Met Office DataPoint (UK only, key required)
-      "openweathermap"  → OpenWeatherMap (global, key required)
-      "open_meteo"      → Open-Meteo (global, always free, no key)
+    Provider chain (automatically determined):
+      1. Any BYOK key provided via the admin panel – Met Office DataPoint is
+         preferred if present, otherwise OpenWeatherMap is tried.
+      2. Open-Meteo public API (zero‑cost, no key) is the default/fallback.
 
-    Fallback chain (if enable_fallback=True):
-      Primary provider failure → Open-Meteo → manual override
+    The optional ``provider`` argument can request a specific service, but a
+    valid BYOK key will still be used first when ``enable_fallback`` is True.
+
+    Caching: each underlying fetch function is decorated with
+    ``st.cache_data`` (TTL=%d seconds) to limit rate‑limit exposure.
 
     Parameters
     ----------
     lat / lon           : Site coordinates (decimal degrees)
     location_name       : Human-readable label for display
-    provider            : Active weather provider ID
+    provider            : Preferred weather provider ID (see above)
     met_office_key      : Met Office DataPoint API key (BYOK)
     met_office_location : Met Office site ID for the chosen location
     openweathermap_key  : OpenWeatherMap API key (BYOK)
-    enable_fallback     : Fall back to Open-Meteo on primary failure
+    enable_fallback     : Fall back to next provider or Open-Meteo on failure
     manual_temp_c       : Manual temperature when all APIs unavailable
     force_refresh       : Clear caches and fetch immediately
-    """
+    """% (CACHE_TTL_SECONDS,)
     if force_refresh:
         _fetch_open_meteo.clear()
         _fetch_met_office.clear()
         _fetch_openweathermap.clear()
 
-    # ── Met Office DataPoint ───────────────────────────────────────────────
-    if provider == "met_office":
-        key = (met_office_key or "").strip()
-        if key:
+    # determine effective provider order
+    chain: list[str] = []
+    if provider and provider in PROVIDERS and provider != "open_meteo":
+        chain.append(provider)
+    if met_office_key and met_office_key.strip():
+        if "met_office" not in chain:
+            chain.append("met_office")
+    if openweathermap_key and openweathermap_key.strip():
+        if "openweathermap" not in chain:
+            chain.append("openweathermap")
+    if "open_meteo" not in chain:
+        chain.append("open_meteo")
+
+    # iterate providers until one succeeds (or fall back to manual)
+    for prov in chain:
+        if prov == "met_office":
             try:
-                return _fetch_met_office(key, met_office_location, location_name)
+                return _fetch_met_office(met_office_key, met_office_location, location_name)
             except Exception as exc:
                 if enable_fallback:
                     st.caption(
                         f"ℹ️ Met Office unavailable ({type(exc).__name__}) "
-                        f"— falling back to Open-Meteo"
+                        f"— falling back to next provider"
                     )
+                    continue
                 else:
                     raise
-
-    # ── OpenWeatherMap ────────────────────────────────────────────────────
-    if provider == "openweathermap":
-        key = (openweathermap_key or "").strip()
-        if key:
+        elif prov == "openweathermap":
             try:
-                return _fetch_openweathermap(key, lat, lon, location_name)
+                return _fetch_openweathermap(openweathermap_key, lat, lon, location_name)
             except Exception as exc:
                 if enable_fallback:
                     st.caption(
                         f"ℹ️ OpenWeatherMap unavailable ({type(exc).__name__}) "
-                        f"— falling back to Open-Meteo"
+                        f"— falling back to next provider"
                     )
+                    continue
                 else:
                     raise
-
-    # ── Open-Meteo (primary free source / fallback) ───────────────────────
-    try:
-        return _fetch_open_meteo(lat, lon, location_name)
-    except Exception as exc:
-        st.caption(
-            f"ℹ️ Open-Meteo unavailable ({type(exc).__name__}) "
-            f"— using manual override"
-        )
+        else:  # open_meteo
+            try:
+                return _fetch_open_meteo(lat, lon, location_name)
+            except Exception as exc:
+                # failed at final provider; drop through to manual fallback
+                st.caption(
+                    f"ℹ️ Open-Meteo unavailable ({type(exc).__name__}) "
+                    f"— using manual override"
+                )
+                break
 
     # ── Manual fallback (offline / all APIs down) ─────────────────────────
     return {

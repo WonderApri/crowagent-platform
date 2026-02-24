@@ -34,6 +34,49 @@ import numpy as np
 import requests
 from datetime import datetime, timezone
 
+
+# ----------------------------------------------------------------------------
+# helper functions for user-added definitions (used by sidebar forms and tests)
+# ----------------------------------------------------------------------------
+def _add_building_from_json(jtext: str) -> tuple[bool, str]:
+    """Attempt to parse JSON and add it to BUILDINGS.
+
+    Expected input is a JSON object containing at least a ``name`` key; the
+    remainder of keys should match the structure used in the BUILDINGS dict in
+    this module.  Returns ``(True, message)`` on success or ``(False, err)`` on
+    failure.
+    """
+    try:
+        obj = json.loads(jtext)
+    except Exception as exc:
+        return False, f"JSON parse error: {exc}"
+    if "name" not in obj:
+        return False, "Missing \"name\" key."
+    name = obj.pop("name")
+    if not isinstance(name, str) or not name.strip():
+        return False, "Invalid building name."
+    BUILDINGS[name] = obj
+    return True, f"Building '{name}' added." 
+
+
+def _add_scenario_from_json(jtext: str) -> tuple[bool, str]:
+    """Parse JSON and insert into SCENARIOS.
+
+    JSON must include a ``name`` key; remaining keys should align with existing
+    scenario dictionaries (u_wall_factor, install_cost_gbp, etc.).
+    """
+    try:
+        obj = json.loads(jtext)
+    except Exception as exc:
+        return False, f"JSON parse error: {exc}"
+    if "name" not in obj:
+        return False, "Missing \"name\" key."
+    name = obj.pop("name")
+    if not isinstance(name, str) or not name.strip():
+        return False, "Invalid scenario name."
+    SCENARIOS[name] = obj
+    return True, f"Scenario '{name}' added."
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PATH SETUP — Ensure core and services modules are accessible
 # ─────────────────────────────────────────────────────────────────────────────
@@ -52,31 +95,61 @@ from app.visualization_3d import render_campus_3d_map
 # LOGO LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_logo_uri() -> str:
-    """Return the horizontal dark logo as a base64 data URI, or '' if file missing."""
+    """Return the horizontal dark logo as a base64 data URI.
+
+    When Streamlit executes a script it often copies the file into a temporary
+    directory, in which case ``__file__`` will point to the temp location and
+    the original ``assets/`` folder will be unreachable.  Historically this
+    caused the sidebar/logo to fall back to the 🌿 emoji.  To avoid that we
+    also check the current working directory (which remains the project root
+    when the app is launched from ``streamlit run``).
+
+    An empty string is returned if the file cannot be found; callers may
+    render textual branding in that case.
+    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
+        os.path.join(os.getcwd(), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         "assets/CrowAgent_Logo_Horizontal_Dark.svg",
     ]
     for path in candidates:
         if os.path.isfile(path):
-            with open(path, "rb") as fh:
-                b64 = base64.b64encode(fh.read()).decode()
-            return f"data:image/svg+xml;base64,{b64}"
+            try:
+                with open(path, "rb") as fh:
+                    b64 = base64.b64encode(fh.read()).decode()
+                return f"data:image/svg+xml;base64,{b64}"
+            except Exception as e:  # pragma: no cover - IO problems are rare
+                st.warning(f"Failed to read logo file at {path}: {e}")
+                return ""
+    # nothing found; log a warning so the issue is easier to diagnose in future
+    st.warning("CrowAgent logo asset not found; falling back to text/emoji branding.")
     return ""
 
 def _load_icon_uri() -> str:
-    """Return the square icon mark as a base64 data URI for the browser tab, or '' if missing."""
+    """Return the square icon mark as a base64 data URI for the browser tab.
+
+    Similar to ``_load_logo_uri`` this function checks both the module path and
+    the current working directory so that the icon resolves even when Streamlit
+    has executed a temporary copy of the script.  An empty string indicates
+    that the emoji fallback should be used instead.
+    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
+        os.path.join(os.getcwd(), "assets/CrowAgent_Icon_Square.svg"),
         "assets/CrowAgent_Icon_Square.svg",
     ]
     for path in candidates:
         if os.path.isfile(path):
-            with open(path, "rb") as fh:
-                b64 = base64.b64encode(fh.read()).decode()
-            return f"data:image/svg+xml;base64,{b64}"
+            try:
+                with open(path, "rb") as fh:
+                    b64 = base64.b64encode(fh.read()).decode()
+                return f"data:image/svg+xml;base64,{b64}"
+            except Exception as e:  # pragma: no cover
+                st.warning(f"Failed to read icon file at {path}: {e}")
+                return ""
+    st.warning("CrowAgent icon asset not found; falling back to emoji favicon.")
     return ""
 
 LOGO_URI = _load_logo_uri()
@@ -135,6 +208,7 @@ h1,h2,h3,h4 {
   border-right: 1px solid #1A3A5C !important;
 }
 [data-testid="stSidebar"] * { color: #CBD8E6 !important; }
+
 [data-testid="stSidebar"] .stMarkdown h1,
 [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 {
@@ -237,6 +311,11 @@ h1,h2,h3,h4 {
   border-top: 3px solid #00C2A8;
   box-shadow: 0 2px 8px rgba(7,26,47,.05);
   height: 100%;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(7,26,47,.15);
 }
 .kpi-card.accent-green  { border-top-color: #1DB87A; }
 .kpi-card.accent-gold   { border-top-color: #F0B429; }
@@ -348,6 +427,10 @@ h1,h2,h3,h4 {
   padding: 16px 24px;
   margin-top: 32px;
   text-align: center;
+  /* flex layout ensures logo and text sit in the page centre */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 /* ── Validation messages ───────────────────────────────────────────────── */
@@ -395,12 +478,31 @@ h1,h2,h3,h4 {
   margin: 2px;
 }
 
-/* ── Hide Streamlit default elements ───────────────────────────────────── */
+/* ── Clean up Streamlit defaults without breaking header ─────────────── */
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
-header    { visibility: hidden; }
+/* hide toolbar and status icons but leave header interactive */
+div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hidden; }
+header {
+  background: transparent !important;
+}
+
+/* ── Sidebar toggle tweaks ─────────────────────────────────────────── */
+button[data-testid="stSidebarCollapseButton"] {
+  visibility: visible !important;
+  color: #00C2A8 !important;
+}
+button[data-testid="stSidebarCollapseButton"]:hover {
+  color: #009688 !important;
+}
+
+/* ensure toggle icon contrast when sidebar is dark */
+[data-testid="stSidebar"] {
+  background: #071A2F !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -613,11 +715,14 @@ from app.utils import validate_gemini_key
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE INITIALISATION
 # ─────────────────────────────────────────────────────────────────────────────
+
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
     except (KeyError, AttributeError, FileNotFoundError):
         return os.getenv(key, default)
+
+# (encryption helpers removed – keys are handled in plaintext in session state)
 
 # Initialize session state with defaults or environment values
 if "chat_history" not in st.session_state:
@@ -649,9 +754,16 @@ if "wx_enable_fallback" not in st.session_state:
     st.session_state.wx_enable_fallback = True
 if "owm_key" not in st.session_state:
     st.session_state.owm_key = _get_secret("OWM_KEY", "")
+# sidebar collapse disallowed (see CSS below)
 
-# ── Handle browser geolocation query params (injected by geo-detect JS) ────
-# GDPR: raw coords are resolved to nearest city and discarded immediately.
+# ── Handle query params on page load (geo, city or custom coordinates) ──
+# The location picker should remember the user’s last choice even after a
+# full browser refresh.  We support three different params:
+#  • geo_lat / geo_lon  – injected by the JS component (auto‑detect flow)
+#  • city                – explicit selection from the dropdown
+#  • lat & lon           – arbitrary manual coordinates
+# GDPR: raw coordinates are resolved to a named city when possible and then
+# discarded immediately.
 _qp = st.query_params
 if "geo_lat" in _qp and "geo_lon" in _qp:
     try:
@@ -667,10 +779,59 @@ if "geo_lat" in _qp and "geo_lon" in _qp:
             "LOCATION_AUTO_DETECTED",
             f"Resolved browser location to '{_resolved}' (raw coords discarded per GDPR)",
         )
+        # remember the resolved city so a refresh doesn’t revert to Reading
+        st.query_params.clear()
+        st.query_params["city"] = _resolved
     except Exception:
         pass
-    # Clear geo params from URL after handling
+elif "city" in _qp:
+    # explicit city persisted by earlier interaction
+    _city = _qp.get("city")
+    if isinstance(_city, list):
+        _city = _city[0]
+    if _city in loc.CITIES:
+        _meta = loc.city_meta(_city)
+        st.session_state.wx_city          = _city
+        st.session_state.wx_lat           = _meta["lat"]
+        st.session_state.wx_lon           = _meta["lon"]
+        st.session_state.wx_location_name = f"{_city}, {_meta['country']}"
+        st.session_state.force_weather_refresh = True
     st.query_params.clear()
+elif "lat" in _qp and "lon" in _qp:
+    try:
+        _lat = float(_qp.get("lat"))
+        _lon = float(_qp.get("lon"))
+        st.session_state.wx_lat = _lat
+        st.session_state.wx_lon = _lon
+        st.session_state.wx_city = ""  # not one of the known cities
+        st.session_state.wx_location_name = f"Custom site ({_lat:.4f}, {_lon:.4f})"
+        st.session_state.force_weather_refresh = True
+    except Exception:
+        pass
+    st.query_params.clear()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UTILS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _update_location_query_params() -> None:
+    """Reflect the currently selected location in the page's query string.
+
+    We encode the city key where available; if the user has supplied custom
+    coordinates we use ``lat``/``lon`` so that a subsequent refresh still
+    reinstates exactly what they chose.  Calling this function after any
+    change (dropdown, manual coords or auto‑detect) keeps the experience
+    consistent.
+    """
+    params: dict[str, str] = {}
+    if st.session_state.wx_city:
+        params["city"] = st.session_state.wx_city
+    # always include numeric coords too; they’ll be ignored if a city is set
+    params["lat"] = str(st.session_state.wx_lat)
+    params["lon"] = str(st.session_state.wx_lon)
+    st.query_params.clear()
+    st.query_params.update(params)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -680,8 +841,8 @@ with st.sidebar:
     # ── Logo ──────────────────────────────────────────────────────────────────
     if LOGO_URI:
         st.markdown(
-            f"<div style='padding:10px 0 4px;'>"
-            f"<img src='{LOGO_URI}' width='200' style='max-width:100%;' alt='CrowAgent™ Logo'/>"
+            f"<div style='padding:10px 0 4px; text-align:center;'>"
+            f"<img src='{LOGO_URI}' width='200' style='max-width:100%; height:auto; display:inline-block;' alt='CrowAgent™ Logo'/>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -697,6 +858,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    # note: collapse is disabled by design; sidebar is always open
     st.markdown("---")
 
     # ── Building selector ─────────────────────────────────────────────────────
@@ -714,6 +876,22 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    # custom building add
+    with st.expander("➕ Add building", expanded=False):
+        st.markdown(
+            "<div style='font-size:0.75rem;color:#8FBCCE;'>"
+            "Enter a JSON object representing the building, including a "
+            "\"name\" field for the new key.",
+            unsafe_allow_html=True,
+        )
+        cb = st.text_area("Building JSON", height=120)
+        if st.button("Add building", key="add_building_btn"):
+            ok, msg = _add_building_from_json(cb)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+
     st.markdown("---")
 
     # ── Scenario multi-select ─────────────────────────────────────────────────
@@ -724,6 +902,21 @@ with st.sidebar:
                  "Enhanced Insulation Upgrade"],
         label_visibility="collapsed",
     )
+
+    # custom scenario add
+    with st.expander("➕ Add scenario", expanded=False):
+        st.markdown(
+            "<div style='font-size:0.75rem;color:#8FBCCE;'>"
+            "Enter a JSON object for the scenario, with a \"name\" key.</div>",
+            unsafe_allow_html=True,
+        )
+        cs = st.text_area("Scenario JSON", height=120)
+        if st.button("Add scenario", key="add_scenario_btn"):
+            ok, msg = _add_scenario_from_json(cs)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
     # Validation
     if not selected_scenario_names:
         st.markdown(
@@ -751,6 +944,7 @@ with st.sidebar:
         st.session_state.wx_location_name = f"{_sel_city}, {_meta['country']}"
         st.session_state.force_weather_refresh = True
         audit.log_event("LOCATION_CHANGED", f"City set to '{_sel_city}'")
+        _update_location_query_params()
 
     # Manual lat/lon entry (for precise site addresses)
     with st.expander("⚙ Custom coordinates", expanded=False):
@@ -774,16 +968,37 @@ with st.sidebar:
                 "LOCATION_CUSTOM",
                 f"Custom coordinates set: {_custom_lat:.4f}, {_custom_lon:.4f}",
             )
+            _update_location_query_params()
         st.markdown(
             "<div style='font-size:0.73rem;color:#8FBCCE;margin-top:4px;'>"
             "Or use browser geolocation (HTTPS only):</div>",
             unsafe_allow_html=True,
         )
-        loc.render_geo_detect()
+        # geolocation component returns a dict when coordinates are obtained
+    _geo = loc.render_geo_detect()
+    if _geo and isinstance(_geo, dict):
+        try:
+            _lat = float(_geo.get("lat"))
+            _lon = float(_geo.get("lon"))
+            _resolved = loc.nearest_city(_lat, _lon)
+            st.session_state.wx_city          = _resolved
+            st.session_state.wx_lat           = _lat
+            st.session_state.wx_lon           = _lon
+            st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
+            st.session_state.force_weather_refresh = True
+            audit.log_event(
+                "LOCATION_AUTO_DETECTED",
+                f"Resolved browser location to '{_resolved}' (coords retained until ref.)",
+            )
+            _update_location_query_params()
+        except Exception:
+            pass
+
 
     st.markdown("---")
 
     # ── Weather panel ──────────────────────────────────────────────────────────
+
     st.markdown("<div class='sb-section'>🌤 Live Weather</div>", unsafe_allow_html=True)
 
     _force = st.button("↻ Refresh Weather", key="wx_refresh", use_container_width=True)
@@ -927,15 +1142,16 @@ with st.sidebar:
         st.markdown("---")
         # ── OpenWeatherMap key ─────────────────────────────────────────────────
         _show_owm = st.checkbox("Show OWM key", key="show_owm_key", value=False)
+        _owm_value = st.session_state.owm_key
         _owm_key  = st.text_input(
             "OpenWeatherMap API key",
             type="default" if _show_owm else "password",
             placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-            value=st.session_state.owm_key,
+            value=_owm_value,
             help="Free at openweathermap.org/api — 1,000 calls/day on free tier",
         )
-        if _owm_key != st.session_state.owm_key:
-            _had_key = bool(st.session_state.owm_key)
+        if _owm_key != _owm_value:
+            _had_key = bool(_owm_value)
             st.session_state.owm_key = _owm_key
             audit.log_event(
                 "KEY_UPDATED",
@@ -956,14 +1172,15 @@ with st.sidebar:
         st.markdown("---")
         # ── Met Office DataPoint key ───────────────────────────────────────────
         _show_mo = st.checkbox("Show Met Office key", key="show_mo_key", value=False)
+        _mo_value = st.session_state.met_office_key
         _mo_key = st.text_input(
           "Met Office DataPoint key",
           type="default" if _show_mo else "password", placeholder="",
-          value=st.session_state.met_office_key,
+          value=_mo_value,
           help="Free at metoffice.gov.uk/services/data/datapoint",
         )
-        if _mo_key != st.session_state.met_office_key:
-            _had_mo = bool(st.session_state.met_office_key)
+        if _mo_key != _mo_value:
+            _had_mo = bool(_mo_value)
             st.session_state.met_office_key = _mo_key
             audit.log_event(
                 "KEY_UPDATED",
@@ -973,20 +1190,21 @@ with st.sidebar:
         # Validation for Met Office DataPoint key
         if st.session_state.met_office_key:
           if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
-            ok, msg = wx.test_met_office_key(st.session_state.met_office_key)
+            ok, msg = wx.test_met_office_key(_decrypt(st.session_state.met_office_key))
             if ok:
               st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
             else:
               st.markdown("<div class='val-err'>❌ " + msg + "</div>", unsafe_allow_html=True)
 
         _show_gm = st.checkbox("Show Gemini key", key="show_gm_key", value=False)
+        _gm_value = st.session_state.gemini_key
         _gm_key = st.text_input(
             "Gemini API key (for AI Advisor)",
             type="default" if _show_gm else "password", placeholder="AIzaSy... (starts with 'AIza')",
-            value=st.session_state.gemini_key,
+            value=_gm_value,
             help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
         )
-        if _gm_key != st.session_state.gemini_key:
+        if _gm_key != _gm_value:
             st.session_state.gemini_key = _gm_key
 
         # Validation feedback with actual API test
@@ -1034,10 +1252,31 @@ with st.sidebar:
         st.caption(f"· {src}")
 
     st.markdown("---")
-    st.markdown(
-        "<div style='font-size:0.76rem;color:#9ABDD0;text-align:center;line-height:1.6;'>"
-        "© 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>"
-        "v2.0.0 · Prototype</div>",
+
+    # insert a branded footer. the logo is rendered inline because _logo_html
+    # has not yet been computed (it comes later when building the top bar), so
+    # we duplicate the same logic here to keep the header and footer in sync.
+    if LOGO_URI:
+        _footer_logo = (
+            f"<img src='{LOGO_URI}' height='28' "
+            "style='vertical-align:middle;display:inline-block;height:28px;" 
+            "width:auto;' alt='CrowAgent™ Logo'/>"
+        )
+    else:
+        _footer_logo = (
+            "<span style='font-family:Rajdhani,sans-serif;" 
+            "font-size:1.1rem;font-weight:700;color:#00C2A8;'>" 
+            "CrowAgent™</span>"
+        )
+
+    st.markdown(f"""
+<div class='ent-footer'>
+  {_footer_logo}
+  <div style='font-size:0.76rem;color:#9ABDD0;line-height:1.6;margin-top:8px;'>
+    © 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>
+    v2.0.0 · Prototype
+  </div>
+</div>""",
         unsafe_allow_html=True,
     )
 
@@ -1068,10 +1307,11 @@ _weather_pill = (
 )
 
 if LOGO_URI:
-    _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle;' alt='CrowAgent™ Logo'/>"
+    # ensure logo is vertically centered and not cropped
+    _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle; display:inline-block; height:38px; width:auto;' alt='CrowAgent™ Logo'/>"
 else:
-    _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>🌿 CrowAgent™</span>"
-
+    # fallback text should match branding but no emoji
+    _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>CrowAgent™</span>"
 st.markdown(f"""
 <div class='platform-topbar'>
   <div style='display:flex;align-items:center;gap:16px;flex-wrap:wrap;'>
@@ -1087,7 +1327,7 @@ st.markdown(f"""
   <div class='platform-topbar-right'>
     {_weather_pill}
     <span class='sp sp-cache'>🚧 PROTOTYPE v2.0.0</span>
-    <span class='sp sp-cache'>Reading, Berkshire</span>
+    <span class='sp sp-cache'>{st.session_state.wx_location_name or st.session_state.wx_city or 'Reading, Berkshire'}</span>
   </div>
 </div>
 """, unsafe_allow_html=True)

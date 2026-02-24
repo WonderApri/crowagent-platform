@@ -26,6 +26,9 @@ The platform combines:
 - 🤖 **AI Advisor** — Agentic LLM with physics tool‑use for expert recommendations  
 - 🌤 **Live Weather** — Real-time temperature integration for accurate thermal calculations  
 - 🏢 **Multi-Building Portfolio** — Compare interventions across your campus estate  
+- 🎨 **Branding & Layout** — consistent CrowAgent™ logo in both header and footer, centrally aligned  
+- 🏷 **Robust asset loading** — logo/icon files are looked up relative to the working directory so they still render when Streamlit copies the script (no more emoji fallback)  
+- ✏️ **Customisation** — use the “➕ Add building” control under the Building section and the “➕ Add scenario” control under Scenarios; enter simple JSON objects (session‑only)
 
 ---
 
@@ -97,6 +100,9 @@ API keys are **never stored server-side**. They live in your browser session onl
 ### Additional environment variables
 
 The application looks for secrets (GEMINI_KEY, MET_OFFICE_KEY) in
+`.streamlit/secrets.toml` or, as a fallback, in `.env` loaded via
+`python-dotenv`. Use `.env.example` as a template.
+
 `.streamlit/secrets.toml` or, as a fallback, in `.env` loaded via
 `python-dotenv`. Use `.env.example` as a template.
 

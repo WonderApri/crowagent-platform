@@ -201,6 +201,9 @@ function detectLocation() {
       var lat = pos.coords.latitude.toFixed(4);
       var lon = pos.coords.longitude.toFixed(4);
       status.innerHTML = '\u2713 Located: ' + lat + ', ' + lon + ' \u2014 loading\u2026';
+
+      // Try to update the parent URL so that a refresh preserves the choice.
+      // If this fails we still send the coords back to Python below.
       try {
         var url = new URL(window.parent.location.href);
         url.searchParams.set('geo_lat', lat);
@@ -213,20 +216,36 @@ function detectLocation() {
         // use HTML entity for pushpin to avoid Python surrogate issues
         btn.textContent = '📍 Detect My Location';
       }
+
+      // always notify Streamlit of the coordinates so Python can handle them
+      try {
+        const Streamlit = window.parent.Streamlit || window.parent.streamlit;
+        Streamlit.setComponentValue({lat: lat, lon: lon});
+      } catch(_ignored) {
+        // gracefully ignore if API isn't available
+      }
     },
     function(err) {
       var msgs = {1:'Permission denied',2:'Position unavailable',3:'Request timed out'};
-      status.innerHTML = '\u274c ' + (msgs[err.code] || err.message);
+      status.innerHTML = '\u274c ' + (msgs[err.code] || err.message)
+                        + ' (try again or enter coords manually)';
       btn.disabled = false;
       btn.textContent = '📍 Detect My Location';
     },
-    { timeout: 10000, maximumAge: 300000 }
+    { timeout: 20000, maximumAge: 300000 }
   );
 }
 </script>
 """
 
 
-def render_geo_detect() -> None:
-    """Embed the browser geolocation button as a Streamlit HTML component."""
-    components.html(_GEO_HTML, height=68)
+def render_geo_detect() -> any:
+    """Embed the browser geolocation button as a Streamlit HTML component.
+
+    The HTML/JS snippet will call ``Streamlit.setComponentValue`` with a
+    dictionary containing ``lat``/``lon`` once the browser has successfully
+    obtained a position.  The return value from ``components.html`` is
+    propagated back to the caller, allowing the main app to react without
+    relying solely on query parameters.
+    """
+    return components.html(_GEO_HTML, height=68)
