@@ -35,6 +35,49 @@ import requests
 import json
 from datetime import datetime, timezone
 
+
+# ----------------------------------------------------------------------------
+# helper functions for user-added definitions (used by sidebar forms and tests)
+# ----------------------------------------------------------------------------
+def _add_building_from_json(jtext: str) -> tuple[bool, str]:
+    """Attempt to parse JSON and add it to BUILDINGS.
+
+    Expected input is a JSON object containing at least a ``name`` key; the
+    remainder of keys should match the structure used in the BUILDINGS dict in
+    this module.  Returns ``(True, message)`` on success or ``(False, err)`` on
+    failure.
+    """
+    try:
+        obj = json.loads(jtext)
+    except Exception as exc:
+        return False, f"JSON parse error: {exc}"
+    if "name" not in obj:
+        return False, "Missing \"name\" key."
+    name = obj.pop("name")
+    if not isinstance(name, str) or not name.strip():
+        return False, "Invalid building name."
+    BUILDINGS[name] = obj
+    return True, f"Building '{name}' added." 
+
+
+def _add_scenario_from_json(jtext: str) -> tuple[bool, str]:
+    """Parse JSON and insert into SCENARIOS.
+
+    JSON must include a ``name`` key; remaining keys should align with existing
+    scenario dictionaries (u_wall_factor, install_cost_gbp, etc.).
+    """
+    try:
+        obj = json.loads(jtext)
+    except Exception as exc:
+        return False, f"JSON parse error: {exc}"
+    if "name" not in obj:
+        return False, "Missing \"name\" key."
+    name = obj.pop("name")
+    if not isinstance(name, str) or not name.strip():
+        return False, "Invalid scenario name."
+    SCENARIOS[name] = obj
+    return True, f"Scenario '{name}' added."
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PATH SETUP — Ensure core and services modules are accessible
 # ─────────────────────────────────────────────────────────────────────────────
@@ -731,6 +774,22 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    # custom building add
+    with st.expander("➕ Add building", expanded=False):
+        st.markdown(
+            "<div style='font-size:0.75rem;color:#8FBCCE;'>"
+            "Enter a JSON object representing the building, including a "
+            "\"name\" field for the new key.",
+            unsafe_allow_html=True,
+        )
+        cb = st.text_area("Building JSON", height=120)
+        if st.button("Add building", key="add_building_btn"):
+            ok, msg = _add_building_from_json(cb)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+
     st.markdown("---")
 
     # ── Scenario multi-select ─────────────────────────────────────────────────
@@ -741,6 +800,21 @@ with st.sidebar:
                  "Enhanced Insulation Upgrade"],
         label_visibility="collapsed",
     )
+
+    # custom scenario add
+    with st.expander("➕ Add scenario", expanded=False):
+        st.markdown(
+            "<div style='font-size:0.75rem;color:#8FBCCE;'>"
+            "Enter a JSON object for the scenario, with a \"name\" key.</div>",
+            unsafe_allow_html=True,
+        )
+        cs = st.text_area("Scenario JSON", height=120)
+        if st.button("Add scenario", key="add_scenario_btn"):
+            ok, msg = _add_scenario_from_json(cs)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
     # Validation
     if not selected_scenario_names:
         st.markdown(
@@ -748,42 +822,6 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
         st.stop()
-
-    # ── Custom definitions expander ───────────────────────────────────────
-    with st.expander("➕ Add custom building or scenario", expanded=False):
-        st.markdown(
-            "<div style='font-size:0.75rem;color:#8FBCCE;'>"
-            "Custom entries live for this browser session only.</div>",
-            unsafe_allow_html=True,
-        )
-        with st.form("custom_defs_form"):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                cb_json = st.text_area(
-                    "Building JSON (include \"name\" key)", height=120
-                )
-            with col_b:
-                cs_json = st.text_area(
-                    "Scenario JSON (include \"name\" key)", height=120
-                )
-            submitted = st.form_submit_button("Add")
-        if submitted:
-            if cb_json.strip():
-                try:
-                    obj = json.loads(cb_json)
-                    name = obj.pop("name")
-                    BUILDINGS[name] = obj
-                    st.success(f"Added building '{name}'")
-                except Exception as e:
-                    st.error(f"Building JSON error: {e}")
-            if cs_json.strip():
-                try:
-                    obj = json.loads(cs_json)
-                    name = obj.pop("name")
-                    SCENARIOS[name] = obj
-                    st.success(f"Added scenario '{name}'")
-                except Exception as e:
-                    st.error(f"Scenario JSON error: {e}")
 
     st.markdown("---")
 

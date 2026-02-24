@@ -26,7 +26,7 @@ The platform combines:
 - 🤖 **AI Advisor** — Agentic LLM with physics tool‑use for expert recommendations  
 - 🌤 **Live Weather** — Real-time temperature integration for accurate thermal calculations  
 - 🏢 **Multi-Building Portfolio** — Compare interventions across your campus estate  
-- ✏️ **Customisation** — add your own building definitions and retrofit scenarios in the sidebar using JSON (session‑only)
+- ✏️ **Customisation** — use the “➕ Add building” control under the Building section and the “➕ Add scenario” control under Scenarios; enter simple JSON objects (session‑only)
 
 ---
 
