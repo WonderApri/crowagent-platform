@@ -604,52 +604,10 @@ CHART_LAYOUT = dict(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UTILITY FUNCTIONS
+# UTILITY IMPORTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _validate_gemini_key(key: str) -> tuple[bool, str, bool]:
-    """Return (is_valid, html_message, warn_flag).
-
-    - ``is_valid`` becomes ``st.session_state.gemini_key_valid`` when
-      the message is shown.
-    - ``html_message`` contains the snippet to render as feedback.
-    - ``warn_flag`` is True when we should treat the key as saved for later
-      use even if we could not conclusively verify it.
-
-    This helper is separated to make unit testing easier and to keep the
-    UI logic clean.
-    """
-    # default: accept key but mark as warning so later checks run again
-    warn = False
-    if not key.startswith("AIza"):
-        return False, "<div class='val-err'>❌ Invalid key format</div>", False
-
-    try:
-        test_url = (
-            "https://generativelanguage.googleapis.com/v1/models/"
-            "gemini-1.5-pro:generateContent"
-        )
-        payload = {
-            "contents": [{"parts": [{"text": "test"}]}],
-            "generationConfig": {"maxOutputTokens": 10},
-        }
-        resp = requests.post(test_url, params={"key": key}, json=payload, timeout=10)
-        if resp.status_code == 200:
-            return True, "<div class='val-ok'>✓ Gemini AI Advisor ready</div>", False
-        elif resp.status_code == 401:
-            return False, "<div class='val-err'>❌ Invalid API key</div>", False
-        elif resp.status_code == 403:
-            return False, "<div class='val-err'>❌ API key blocked (check permissions in Google Cloud)</div>", False
-        else:
-            # unknown 2xx/3xx/4xx code; accept format and test later
-            return True, "<div class='val-ok'>✓ Key format valid (will test on first use)</div>", False
-    except requests.exceptions.Timeout:
-        return True, "<div class='val-warn'>⚠ Validation timed out — key saved, will test on first use</div>", True
-    except requests.exceptions.ConnectionError:
-        return True, "<div class='val-warn'>⚠ No internet connection — key saved, will test on first use</div>", True
-    except Exception:
-        return True, "<div class='val-warn'>⚠ Validation error — key saved, will test on first use</div>", True
-
+from app.utils import validate_gemini_key
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE INITIALISATION
@@ -1039,8 +997,8 @@ with st.sidebar:
                     unsafe_allow_html=True,
                 )
             else:
-                # delegate to helper that encapsulates network call and policy
-                valid, message, warn = _validate_gemini_key(st.session_state.gemini_key)
+                # delegate to utility helper
+                valid, message, warn = validate_gemini_key(st.session_state.gemini_key)
                 st.markdown(message, unsafe_allow_html=True)
                 st.session_state.gemini_key_valid = valid or warn
 

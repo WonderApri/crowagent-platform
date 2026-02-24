@@ -1,7 +1,7 @@
 import pytest
 import requests
 
-from app import main
+from app.utils import validate_gemini_key
 
 
 class DummyResponse:
@@ -11,14 +11,14 @@ class DummyResponse:
 
 def test_validate_success(monkeypatch):
     monkeypatch.setattr(requests, "post", lambda *args, **kwargs: DummyResponse(200))
-    valid, msg, warn = main._validate_gemini_key("AIzaValidKey")
+    valid, msg, warn = validate_gemini_key("AIzaValidKey")
     assert valid is True
     assert "ready" in msg
     assert warn is False
 
 
 def test_validate_invalid_format():
-    valid, msg, warn = main._validate_gemini_key("BadKey")
+    valid, msg, warn = validate_gemini_key("BadKey")
     assert valid is False
     assert "Invalid key format" in msg
     assert warn is False
