@@ -700,6 +700,7 @@ CHART_LAYOUT = dict(
 # ─────────────────────────────────────────────────────────────────────────────
 
 from app.utils import validate_gemini_key
+import app.compliance as compliance
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE INITIALISATION
@@ -714,6 +715,8 @@ def _get_secret(key: str, default: str = "") -> str:
 # (encryption helpers removed – keys are handled in plaintext in session state)
 
 # Initialize session state with defaults or environment values
+if "user_segment" not in st.session_state:
+    st.session_state.user_segment = "university_he"
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "agent_history" not in st.session_state:
@@ -795,12 +798,41 @@ with st.sidebar:
     # note: collapse is disabled by design; sidebar is always open
     st.markdown("---")
 
+    # ── User Segment selector ─────────────────────────────────────────────────
+    st.markdown("<div class='sb-section'>👤 User Segment</div>", unsafe_allow_html=True)
+    _seg_options = {k: f"{v['icon']} {v['label']}" for k, v in compliance.SEGMENT_META.items()}
+    _seg_keys    = list(_seg_options.keys())
+    _seg_idx     = _seg_keys.index(st.session_state.user_segment) \
+                   if st.session_state.user_segment in _seg_keys else 0
+    _sel_segment = st.selectbox(
+        "User segment", _seg_keys, index=_seg_idx,
+        format_func=lambda k: _seg_options[k],
+        label_visibility="collapsed",
+        key="segment_selector",
+    )
+    if _sel_segment != st.session_state.user_segment:
+        st.session_state.user_segment = _sel_segment
+    _seg_meta = compliance.SEGMENT_META[st.session_state.user_segment]
+    st.markdown(
+        f"<div style='font-size:0.74rem;color:#8FBCCE;line-height:1.5;margin-bottom:4px;'>"
+        f"{_seg_meta['description']}</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    # ── Merge segment-specific buildings into BUILDINGS ───────────────────────
+    _seg_buildings = compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {})
+    _active_buildings = dict(BUILDINGS)           # always preserve university buildings
+    if _seg_buildings:
+        _active_buildings = {**_seg_buildings, **BUILDINGS}  # segment first for UX
+
     # ── Building selector ─────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>🏢 Building</div>", unsafe_allow_html=True)
     selected_building_name = st.selectbox(
-        "Building", list(BUILDINGS.keys()), label_visibility="collapsed",
+        "Building", list(_active_buildings.keys()), label_visibility="collapsed",
     )
-    sb = BUILDINGS[selected_building_name]
+    sb = _active_buildings[selected_building_name]
     st.markdown(
         f"<div style='font-size:0.76rem;color:#9ABDD0;line-height:1.5;'>"
         f"<span class='chip'>{sb['building_type']}</span> "
@@ -1203,7 +1235,7 @@ _compute_errors: list[str] = []
 
 for _sn in selected_scenario_names:
     try:
-        results[_sn] = calculate_thermal_load(BUILDINGS[selected_building_name],
+        results[_sn] = calculate_thermal_load(_active_buildings[selected_building_name],
                                               SCENARIOS[_sn], weather)
     except Exception as _e:
         _compute_errors.append(f"Scenario '{_sn}': {_e}")
@@ -1268,10 +1300,11 @@ st.markdown("""
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN NAVIGATION TABS
 # ─────────────────────────────────────────────────────────────────────────────
-_tab_dash, _tab_fin, _tab_ai, _tab_about = st.tabs([
+_tab_dash, _tab_fin, _tab_ai, _tab_compliance, _tab_about = st.tabs([
     "📊 Dashboard",
     "📈 Financial Analysis",
     "🤖 AI Advisor",
+    "🏛️ UK Compliance Hub",
     "ℹ️ About & Contact",
 ])
 
@@ -1713,7 +1746,7 @@ with _tab_ai:
                 _res = crow_agent.run_agent(
                     api_key=_akey, user_message=_pq,
                     conversation_history=st.session_state.agent_history,
-                    buildings=BUILDINGS, scenarios=SCENARIOS,
+                    buildings=_active_buildings, scenarios=SCENARIOS,
                     calculate_fn=calculate_thermal_load,
                     current_context={
                         "building": selected_building_name,
@@ -1793,7 +1826,7 @@ with _tab_ai:
                     _res = crow_agent.run_agent(
                         api_key=_akey, user_message=_clean,
                         conversation_history=st.session_state.agent_history,
-                        buildings=BUILDINGS, scenarios=SCENARIOS,
+                        buildings=_active_buildings, scenarios=SCENARIOS,
                         calculate_fn=calculate_thermal_load,
                         current_context={
                             "building": selected_building_name,
@@ -1819,7 +1852,416 @@ with _tab_ai:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# TAB 4 — ABOUT & CONTACT
+# TAB 4 — UK COMPLIANCE HUB
+# ════════════════════════════════════════════════════════════════════════════
+with _tab_compliance:
+    _seg   = st.session_state.user_segment
+    _smeta = compliance.SEGMENT_META[_seg]
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    st.markdown(
+        f"<h3 style='margin-bottom:4px;'>UK Compliance Hub</h3>"
+        f"<div style='font-size:0.80rem;color:#5A7A90;margin-bottom:14px;'>"
+        f"{_smeta['icon']} {_smeta['label']} · "
+        f"Relevant regulations: {' · '.join(_smeta['regulations'])}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("""
+    <div class='disc-prototype'>
+      <strong>⚠️ Compliance Disclaimer.</strong>
+      All outputs in this tab are <strong>indicative estimates only</strong> based on simplified
+      proxy calculations. They do not constitute a formal EPC, SAP, SBEM, or SECR assessment.
+      Formal compliance requires assessment by an accredited energy assessor (DEA/NDEA) or
+      qualified carbon accountant. Results should not be relied upon for legal, financial, or
+      planning decisions without independent professional verification.
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Segment: University HE — redirect notice ───────────────────────────
+    if _seg == "university_he":
+        st.info(
+            "**University / Higher Education segment selected.** "
+            "The compliance tools in this tab are designed for SMB and individual self-build users. "
+            "University campus analysis is available in the **Dashboard** and **Financial Analysis** tabs. "
+            "Switch your user segment in the sidebar to access the MEES, SECR, or Part L tools."
+        )
+
+    # ── Segment: Individual Self-Build — Part L / FHS checker ─────────────
+    elif _seg == "individual_selfbuild":
+        st.markdown("<div class='sec-hdr'>Part L 2021 & Future Homes Standard Compliance Checker</div>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            "<div style='font-size:0.83rem;color:#3A5268;margin-bottom:14px;line-height:1.6;'>"
+            "New dwellings in England must comply with <strong>Approved Document L1A (2021 edition)</strong>. "
+            "From 2025/26, the <strong>Future Homes Standard</strong> will tighten this further, "
+            "requiring ~75–80% reduction in carbon vs. 2013 Part L. Enter your proposed fabric "
+            "U-values below to check compliance."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        _pl_c1, _pl_c2 = st.columns(2)
+        with _pl_c1:
+            _pl_u_wall    = st.number_input("Proposed wall U-value (W/m²K)",
+                                            min_value=0.05, max_value=6.0, value=1.6, step=0.01,
+                                            help="Part L 2021 target: ≤ 0.18 W/m²K")
+            _pl_u_roof    = st.number_input("Proposed roof U-value (W/m²K)",
+                                            min_value=0.05, max_value=6.0, value=2.0, step=0.01,
+                                            help="Part L 2021 target: ≤ 0.11 W/m²K")
+            _pl_u_glazing = st.number_input("Proposed glazing U-value (W/m²K)",
+                                            min_value=0.50, max_value=6.0, value=2.8, step=0.01,
+                                            help="Part L 2021 target: ≤ 1.20 W/m²K")
+        with _pl_c2:
+            _pl_area      = st.number_input("Floor area (m²)", min_value=10.0, max_value=2000.0,
+                                            value=120.0, step=5.0)
+            _pl_energy    = st.number_input("Estimated annual energy (kWh)",
+                                            min_value=0.0, max_value=500_000.0, value=18000.0,
+                                            step=100.0,
+                                            help="Total site energy — electricity + gas combined")
+
+        if st.button("Run Part L / FHS Check", type="primary", key="run_partl"):
+            try:
+                _pl_result = compliance.part_l_compliance_check(
+                    u_wall=_pl_u_wall, u_roof=_pl_u_roof, u_glazing=_pl_u_glazing,
+                    floor_area_m2=_pl_area, annual_energy_kwh=_pl_energy,
+                    building_type="individual_selfbuild",
+                )
+                # Verdict banner
+                _pass_colour = "#1DB87A" if _pl_result["part_l_2021_pass"] else "#E84C4C"
+                st.markdown(
+                    f"<div style='background:{_pass_colour}18;border-left:4px solid {_pass_colour};"
+                    f"border-radius:0 6px 6px 0;padding:12px 16px;margin:10px 0;'>"
+                    f"<strong style='color:{_pass_colour};'>{_pl_result['overall_verdict']}</strong>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Element compliance table
+                st.markdown("<div class='sec-hdr'>Fabric Element Check</div>", unsafe_allow_html=True)
+                _pl_rows = []
+                for item in _pl_result["compliance_items"]:
+                    _pl_rows.append({
+                        "Element":        item["element"],
+                        "Proposed (W/m²K)": item["proposed_u"],
+                        "Target (W/m²K)":   item["target_u"],
+                        "Gap (W/m²K)":      item["gap"] if not item["pass"] else "—",
+                        "Status":           "✅ PASS" if item["pass"] else "❌ FAIL",
+                    })
+                st.dataframe(pd.DataFrame(_pl_rows), use_container_width=True, hide_index=True)
+
+                # Primary energy metric
+                _fhs_colour = "#1DB87A" if _pl_result["fhs_ready"] else "#F0B429"
+                st.markdown(
+                    f"<div class='kpi-card' style='margin-top:10px;border-top-color:{_fhs_colour};'>"
+                    f"<div class='kpi-label'>Estimated Primary Energy Intensity</div>"
+                    f"<div class='kpi-value'>{_pl_result['primary_energy_est']}"
+                    f"<span class='kpi-unit'> kWh/m²/yr</span></div>"
+                    f"<div class='kpi-sub'>FHS indicative threshold: ≤ {_pl_result['fhs_threshold']} kWh/m²/yr · "
+                    f"{'✅ FHS-ready' if _pl_result['fhs_ready'] else '⚠️ Improvement needed for FHS'}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Improvement actions
+                if _pl_result["improvement_actions"]:
+                    st.markdown("<div class='sec-hdr'>Required Improvement Actions</div>",
+                                unsafe_allow_html=True)
+                    for _action in _pl_result["improvement_actions"]:
+                        st.markdown(
+                            f"<div class='disc-prototype' style='margin:4px 0;'>⚙️ {_action}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+            except ValueError as _e:
+                st.error(f"Validation error: {_e}")
+
+        st.markdown("---")
+        st.caption(
+            "Part L 2021 targets: wall ≤ 0.18 W/m²K · roof ≤ 0.11 W/m²K · glazing ≤ 1.20 W/m²K "
+            "(ADL1A, England). Future Homes Standard threshold is indicative — final standard TBC. "
+            "⚠️ Formal SAP calculation by an accredited DEA is required for Building Control sign-off."
+        )
+
+    # ── Segment: SMB Landlord — MEES / EPC gap analysis ───────────────────
+    elif _seg == "smb_landlord":
+        st.markdown("<div class='sec-hdr'>EPC Rating Estimator & MEES Gap Analysis</div>",
+                    unsafe_allow_html=True)
+
+        # Regulatory context box
+        st.markdown("""
+        <div style='background:#FFF8E1;border:1px solid #FFD89B;border-left:4px solid #F0B429;
+                    border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:14px;font-size:0.82rem;
+                    color:#664D03;line-height:1.6;'>
+          <strong>MEES Compliance Deadlines (England &amp; Wales):</strong><br/>
+          • <strong>Since April 2023:</strong> Non-domestic properties must have EPC rating E or above to be let.<br/>
+          • <strong>From 2028 (new tenancies):</strong> EPC C minimum — all new leases must meet C.<br/>
+          • <strong>From 2030 (all leases):</strong> EPC C minimum applies to all existing leases.<br/>
+          Landlords with non-compliant properties face civil penalties and inability to let.
+          Civil penalties can reach <strong>£150,000</strong> per property.
+        </div>
+        """, unsafe_allow_html=True)
+
+        _mees_c1, _mees_c2 = st.columns(2)
+        with _mees_c1:
+            _m_area    = st.number_input("Floor area (m²)", min_value=10.0, max_value=50_000.0,
+                                         value=500.0, step=10.0, key="mees_area")
+            _m_energy  = st.number_input("Annual energy consumption (kWh)",
+                                         min_value=0.0, max_value=10_000_000.0, value=72_000.0,
+                                         step=1000.0, key="mees_energy",
+                                         help="Total site electricity + gas (kWh/yr from bills)")
+            _m_u_wall  = st.number_input("Wall U-value (W/m²K)", min_value=0.05, max_value=6.0,
+                                         value=1.7, step=0.01, key="mees_uwall")
+        with _mees_c2:
+            _m_u_roof  = st.number_input("Roof U-value (W/m²K)", min_value=0.05, max_value=6.0,
+                                         value=1.8, step=0.01, key="mees_uroof")
+            _m_u_glaz  = st.number_input("Glazing U-value (W/m²K)", min_value=0.50, max_value=6.0,
+                                         value=2.8, step=0.01, key="mees_uglaz")
+            _m_glaz_r  = st.slider("Glazing ratio (% of facade)", min_value=5, max_value=90,
+                                    value=35, step=5, key="mees_glazr") / 100.0
+
+        if st.button("Run EPC & MEES Analysis", type="primary", key="run_mees"):
+            try:
+                _epc = compliance.estimate_epc_rating(
+                    floor_area_m2=_m_area, annual_energy_kwh=_m_energy,
+                    u_wall=_m_u_wall, u_roof=_m_u_roof, u_glazing=_m_u_glaz,
+                    glazing_ratio=_m_glaz_r, building_type="commercial",
+                )
+                _gap = compliance.mees_gap_analysis(
+                    current_sap=_epc["sap_score"], target_band="C",
+                )
+
+                # EPC band display
+                _ec = _epc["epc_colour"]
+                _eb = _epc["epc_band"]
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:20px;margin:12px 0;'>"
+                    f"<div style='background:{_ec};color:#fff;font-family:Rajdhani,sans-serif;"
+                    f"font-size:2.8rem;font-weight:700;width:70px;height:70px;border-radius:8px;"
+                    f"display:flex;align-items:center;justify-content:center;'>{_eb}</div>"
+                    f"<div>"
+                    f"<div style='font-family:Rajdhani,sans-serif;font-size:1.1rem;font-weight:700;"
+                    f"color:#071A2F;'>Estimated EPC Band: {_eb}</div>"
+                    f"<div style='font-size:0.83rem;color:#5A7A90;margin-top:2px;'>"
+                    f"Indicative SAP score: {_epc['sap_score']} · "
+                    f"Energy intensity: {_epc['eui_kwh_m2']} kWh/m²/yr</div>"
+                    f"</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+                # MEES status pills
+                _c_now = "#1DB87A" if _epc["mees_compliant_now"] else "#E84C4C"
+                _c_28  = "#1DB87A" if _epc["mees_2028_compliant"] else "#F0B429"
+                st.markdown(
+                    f"<div style='display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;'>"
+                    f"<span class='sp' style='background:{_c_now}18;color:{_c_now};"
+                    f"border:1px solid {_c_now}44;'>"
+                    f"{'✅' if _epc['mees_compliant_now'] else '❌'} "
+                    f"Current MEES (E minimum)</span>"
+                    f"<span class='sp' style='background:{_c_28}18;color:{_c_28};"
+                    f"border:1px solid {_c_28}44;'>"
+                    f"{'✅' if _epc['mees_2028_compliant'] else '⚠️'} "
+                    f"2028 MEES Target (C)</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Recommendation
+                st.markdown(
+                    f"<div class='disc-ai'><strong>Assessment:</strong> {_epc['recommendation']}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Gap analysis — measures
+                if not _epc["mees_2028_compliant"] and _gap["recommended_measures"]:
+                    st.markdown("<div class='sec-hdr'>Recommended Improvement Measures</div>",
+                                unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div style='font-size:0.82rem;color:#5A7A90;margin-bottom:8px;'>"
+                        f"SAP gap to band C: <strong>{_gap['sap_gap']:.1f} points</strong>. "
+                        f"Indicative total cost: "
+                        f"<strong>£{_gap['total_cost_low']:,} – £{_gap['total_cost_high']:,}</strong>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    _m_rows = []
+                    for _m in _gap["recommended_measures"]:
+                        _m_rows.append({
+                            "Measure":          _m["name"],
+                            "SAP Lift":         f"+{_m['sap_lift']} pts",
+                            "Cost Estimate":    f"£{_m['cost_low']:,} – £{_m['cost_high']:,}",
+                            "Regulation Ref":   _m["regulation"],
+                        })
+                    st.dataframe(pd.DataFrame(_m_rows), use_container_width=True, hide_index=True)
+                    if not _gap["achievable"]:
+                        st.warning(
+                            "The measures listed above may not be sufficient to reach EPC C from "
+                            "the current estimated rating. A formal SBEM/SAP assessment and "
+                            "possibly deeper retrofit (e.g. ASHP, fabric-first approach) will be required."
+                        )
+
+            except ValueError as _e:
+                st.error(f"Validation error: {_e}")
+
+        st.markdown("---")
+        st.caption(
+            "EPC estimation uses a proxy SAP 10.2 methodology based on energy intensity and fabric U-values. "
+            "MEES deadlines: England & Wales (current E minimum — April 2023; planned C by 2028 new tenancies, "
+            "2030 all leases). Scotland and Northern Ireland operate separate EPC frameworks. "
+            "⚠️ A formal SBEM assessment by an accredited Non-Domestic Energy Assessor (NDEA) is required "
+            "for a legally valid EPC."
+        )
+
+    # ── Segment: SMB Industrial — SECR / Scope 1 & 2 carbon baseline ──────
+    elif _seg == "smb_industrial":
+        st.markdown("<div class='sec-hdr'>SECR Carbon Baseline Calculator (Scope 1 & 2)</div>",
+                    unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style='background:#EBF5FB;border:1px solid #AED6F1;border-left:4px solid #2980B9;
+                    border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:14px;font-size:0.82rem;
+                    color:#1A4A6B;line-height:1.6;'>
+          <strong>SECR — Streamlined Energy &amp; Carbon Reporting:</strong><br/>
+          Mandatory for large UK companies (250+ employees <em>or</em> £36M+ turnover). SMBs below
+          this threshold are not legally required to report but face increasing supply-chain pressure
+          from large corporate buyers with their own SECR / TCFD obligations.<br/>
+          Use this tool to calculate your <strong>Scope 1</strong> (direct combustion &amp; fleet) and
+          <strong>Scope 2</strong> (purchased electricity) carbon baseline — the starting point for
+          any net zero pathway or PAS 2060 declaration.
+        </div>
+        """, unsafe_allow_html=True)
+
+        _secr_c1, _secr_c2 = st.columns(2)
+        with _secr_c1:
+            st.markdown("<div style='font-size:0.80rem;font-weight:700;color:#3A576B;"
+                        "margin-bottom:4px;'>Scope 2 — Purchased Electricity</div>",
+                        unsafe_allow_html=True)
+            _s_elec = st.number_input("Annual electricity (kWh)", min_value=0.0,
+                                       max_value=100_000_000.0, value=120_000.0, step=1000.0,
+                                       key="secr_elec")
+            st.markdown("<div style='font-size:0.80rem;font-weight:700;color:#3A576B;"
+                        "margin:8px 0 4px;'>Scope 1 — Fuel Combustion</div>",
+                        unsafe_allow_html=True)
+            _s_gas  = st.number_input("Natural gas (kWh)", min_value=0.0, max_value=100_000_000.0,
+                                       value=85_000.0, step=1000.0, key="secr_gas")
+            _s_oil  = st.number_input("Gas oil / diesel (kWh)", min_value=0.0,
+                                       max_value=100_000_000.0, value=0.0, step=1000.0,
+                                       key="secr_oil")
+        with _secr_c2:
+            _s_lpg  = st.number_input("LPG (kWh)", min_value=0.0, max_value=100_000_000.0,
+                                       value=0.0, step=1000.0, key="secr_lpg")
+            st.markdown("<div style='font-size:0.80rem;font-weight:700;color:#3A576B;"
+                        "margin:8px 0 4px;'>Scope 1 — Fleet</div>",
+                        unsafe_allow_html=True)
+            _s_miles = st.number_input("Business fleet miles (per year)", min_value=0.0,
+                                        max_value=10_000_000.0, value=0.0, step=1000.0,
+                                        key="secr_miles")
+            st.markdown("<div style='font-size:0.80rem;font-weight:700;color:#3A576B;"
+                        "margin:8px 0 4px;'>Intensity Metric</div>", unsafe_allow_html=True)
+            _s_area = st.number_input("Floor area for intensity (m²) — optional",
+                                       min_value=0.0, max_value=1_000_000.0, value=2_000.0,
+                                       step=100.0, key="secr_area")
+
+        if st.button("Calculate Carbon Baseline", type="primary", key="run_secr"):
+            try:
+                _floor = _s_area if _s_area > 0 else None
+                _cb = compliance.calculate_carbon_baseline(
+                    elec_kwh=_s_elec, gas_kwh=_s_gas, oil_kwh=_s_oil,
+                    lpg_kwh=_s_lpg, fleet_miles=_s_miles, floor_area_m2=_floor,
+                )
+
+                # KPI cards
+                _sk1, _sk2, _sk3, _sk4 = st.columns(4)
+                with _sk1:
+                    st.markdown(f"""
+                    <div class='kpi-card'>
+                      <div class='kpi-label'>Total Emissions</div>
+                      <div class='kpi-value'>{_cb['total_tco2e']:,.1f}<span class='kpi-unit'> tCO₂e</span></div>
+                      <div class='kpi-sub'>Scope 1 + 2 combined</div>
+                    </div>""", unsafe_allow_html=True)
+                with _sk2:
+                    st.markdown(f"""
+                    <div class='kpi-card accent-green'>
+                      <div class='kpi-label'>Scope 1 (Direct)</div>
+                      <div class='kpi-value'>{_cb['scope1_tco2e']:,.1f}<span class='kpi-unit'> tCO₂e</span></div>
+                      <div class='kpi-sub'>Gas · Oil · LPG · Fleet</div>
+                    </div>""", unsafe_allow_html=True)
+                with _sk3:
+                    st.markdown(f"""
+                    <div class='kpi-card' style='border-top-color:#00C2A8'>
+                      <div class='kpi-label'>Scope 2 (Electricity)</div>
+                      <div class='kpi-value'>{_cb['scope2_tco2e']:,.1f}<span class='kpi-unit'> tCO₂e</span></div>
+                      <div class='kpi-sub'>Grid: 0.20482 kgCO₂e/kWh (BEIS 2023)</div>
+                    </div>""", unsafe_allow_html=True)
+                with _sk4:
+                    _int_disp = (
+                        f"{_cb['intensity_kgco2_m2']} kgCO₂e/m²"
+                        if _cb["intensity_kgco2_m2"] is not None else "N/A"
+                    )
+                    st.markdown(f"""
+                    <div class='kpi-card accent-gold'>
+                      <div class='kpi-label'>Carbon Intensity</div>
+                      <div class='kpi-value' style='font-size:1.4rem;'>{_int_disp}</div>
+                      <div class='kpi-sub'>Per m² floor area</div>
+                    </div>""", unsafe_allow_html=True)
+
+                # Emissions breakdown chart
+                st.markdown("<div class='sec-hdr'>Emissions Breakdown by Source</div>",
+                            unsafe_allow_html=True)
+                _bk = _cb["breakdown"]
+                _bk_labels = ["Electricity (Scope 2)", "Natural Gas (Scope 1)",
+                               "Oil (Scope 1)", "LPG (Scope 1)", "Fleet (Scope 1)"]
+                _bk_values = [
+                    _bk["electricity_scope2_tco2e"],
+                    _bk["gas_scope1_tco2e"],
+                    _bk["oil_scope1_tco2e"],
+                    _bk["lpg_scope1_tco2e"],
+                    _bk["fleet_scope1_tco2e"],
+                ]
+                _bk_filtered = [(l, v) for l, v in zip(_bk_labels, _bk_values) if v > 0]
+                if _bk_filtered:
+                    _bk_fig = go.Figure(go.Pie(
+                        labels=[x[0] for x in _bk_filtered],
+                        values=[x[1] for x in _bk_filtered],
+                        marker_colors=["#00C2A8", "#1DB87A", "#F0B429", "#E84C4C", "#4A6FA5"],
+                        textinfo="label+percent",
+                        hole=0.40,
+                    ))
+                    _bk_fig.update_layout(
+                        **{**CHART_LAYOUT, "height": 280, "showlegend": False},
+                        margin=dict(t=10, b=10, l=0, r=0),
+                    )
+                    st.plotly_chart(_bk_fig, use_container_width=True, config={"displayModeBar": False})
+
+                # SECR reporting context
+                _secr_info = _cb["secr_threshold_check"]
+                _sc_col = "#F0B429" if _secr_info["supply_chain_pressure"] else "#1DB87A"
+                st.markdown(
+                    f"<div style='background:{_sc_col}10;border-left:3px solid {_sc_col};"
+                    f"border-radius:0 6px 6px 0;padding:10px 14px;margin-top:8px;"
+                    f"font-size:0.82rem;color:#3A5268;line-height:1.6;'>"
+                    f"<strong>SECR Context:</strong> {_secr_info['note']}<br/>"
+                    f"{'⚠️ At this emissions level, supply-chain buyers are likely to request carbon data.' if _secr_info['supply_chain_pressure'] else '✅ Emissions level is low — supply-chain pressure unlikely in the near term.'}"
+                    f"{'<br/>✅ PAS 2060 carbon neutrality declaration is a feasible target.' if _secr_info['pas2060_candidacy'] else ''}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+            except ValueError as _e:
+                st.error(f"Validation error: {_e}")
+
+        st.markdown("---")
+        st.caption(
+            "Carbon factors: BEIS GHG Conversion Factors 2023 · Electricity: 0.20482 kgCO₂e/kWh · "
+            "Natural gas: 0.18316 kgCO₂e/kWh · Gas oil: 0.24615 kgCO₂e/kWh · LPG: 0.21435 kgCO₂e/kWh · "
+            "Fleet: 0.168 kgCO₂e/mile (medium petrol car, BEIS 2023). "
+            "⚠️ SECR reporting requires methodology disclosure; this tool is a screening calculator only."
+        )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TAB 5 — ABOUT & CONTACT
 # ════════════════════════════════════════════════════════════════════════════
 with _tab_about:
     _about_c1, _about_c2 = st.columns([2, 1])
