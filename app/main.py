@@ -912,43 +912,6 @@ with st.sidebar:
     st.markdown("---")
 
     # ── Weather panel ──────────────────────────────────────────────────────────
-    # ── MAP AREA (moved from sidebar to dashboard)
-    try:
-        st.markdown("<div class='sb-section'>🗺️ Interactive Map</div>", unsafe_allow_html=True)
-        month = st.slider("Month", 1, 12, 6, format="%d")
-
-        _all_points = [
-            {"lon": -1.8904, "lat": 52.4862, "radius": 100, "month": m}
-            for m in range(1, 13)
-        ]
-        data = [pt for pt in _all_points if pt["month"] == month]
-
-        layer = pdk.Layer("ScatterplotLayer",
-            data=data,
-            get_position="[lon, lat]", get_radius="radius",
-            get_fill_color=[0, 194, 168], pickable=True)
-
-        view = pdk.ViewState(latitude=52.4862, longitude=-1.8904, zoom=14, pitch=45)
-        st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view,
-            map_style="https://tiles.openfreemap.org/styles/liberty"))
-
-        st.markdown("\n---\n")
-        st.markdown("### OpenStreetMap buildings (via Overpass API)")
-        if st.button("Fetch buildings around current location"):
-            try:
-                api = overpy.Overpass()
-                lat = float(st.session_state.wx_lat)
-                lon = float(st.session_state.wx_lon)
-                query = f"""
-  way["building"]({lat-0.01},{lon-0.01},{lat+0.01},{lon+0.01});
-  (._;>;); out body;
-"""
-                result = api.query(query)
-                st.success(f"Got {len(result.ways)} building ways")
-            except Exception as exc:
-                st.error(f"Overpass query failed: {exc}")
-    except Exception as exc:  # pragma: no cover - optional if pydeck not available
-        st.warning(f"Pydeck demo failed: {exc}")
 
     st.markdown("<div class='sb-section'>🌤 Live Weather</div>", unsafe_allow_html=True)
 
