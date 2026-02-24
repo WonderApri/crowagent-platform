@@ -402,6 +402,20 @@ header    { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
+# apply extra rule if sidebar lock toggle is active
+if st.session_state.get("sidebar_hidden", False):
+    st.markdown(
+        """
+        <style>
+        /* always keep sidebar out of view when locked */
+        [data-testid="stSidebar"] { margin-left: -300px !important; }
+        /* hide the hover handle that normally re-opens it */
+        [data-testid="collapsedControl"] { visibility: hidden !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILDING DATA — Greenfield University (fictional)
