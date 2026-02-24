@@ -392,6 +392,10 @@ h1,h2,h3,h4 {
   padding: 16px 24px;
   margin-top: 32px;
   text-align: center;
+  /* flex layout ensures logo and text sit in the page centre */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 /* ── Validation messages ───────────────────────────────────────────────── */
@@ -1128,10 +1132,31 @@ with st.sidebar:
         st.caption(f"· {src}")
 
     st.markdown("---")
-    st.markdown(
-        "<div style='font-size:0.76rem;color:#9ABDD0;text-align:center;line-height:1.6;'>"
-        "© 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>"
-        "v2.0.0 · Prototype</div>",
+
+    # insert a branded footer. the logo is rendered inline because _logo_html
+    # has not yet been computed (it comes later when building the top bar), so
+    # we duplicate the same logic here to keep the header and footer in sync.
+    if LOGO_URI:
+        _footer_logo = (
+            f"<img src='{LOGO_URI}' height='28' "
+            "style='vertical-align:middle;display:inline-block;height:28px;" 
+            "width:auto;' alt='CrowAgent™ Logo'/>"
+        )
+    else:
+        _footer_logo = (
+            "<span style='font-family:Rajdhani,sans-serif;" 
+            "font-size:1.1rem;font-weight:700;color:#00C2A8;'>" 
+            "CrowAgent™</span>"
+        )
+
+    st.markdown(f"""
+<div class='ent-footer'>
+  {_footer_logo}
+  <div style='font-size:0.76rem;color:#9ABDD0;line-height:1.6;margin-top:8px;'>
+    © 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>
+    v2.0.0 · Prototype
+  </div>
+</div>""",
         unsafe_allow_html=True,
     )
 
