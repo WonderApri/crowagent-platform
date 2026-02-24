@@ -29,6 +29,7 @@ load_dotenv(_env_path)
 
 import streamlit as st
 import pydeck as pdk
+import overpy
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
@@ -927,6 +928,24 @@ with st.sidebar:
         view = pdk.ViewState(latitude=52.4862, longitude=-1.8904, zoom=14, pitch=45)
         st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view,
             map_style="https://tiles.openfreemap.org/styles/liberty"))
+
+        # ── Overpass buildings lookup
+        st.markdown("\n---\n")
+        st.markdown("### OpenStreetMap buildings (via Overpass API)")
+        if st.button("Fetch buildings around current location"):
+            try:
+                api = overpy.Overpass()
+                lat = float(st.session_state.wx_lat)
+                lon = float(st.session_state.wx_lon)
+                # small bbox ±0.01 degrees (~1km)
+                query = f"""
+  way["building"]({lat-0.01},{lon-0.01},{lat+0.01},{lon+0.01});
+  (._;>;); out body;
+"""
+                result = api.query(query)
+                st.success(f"Got {len(result.ways)} building ways")
+            except Exception as exc:
+                st.error(f"Overpass query failed: {exc}")
     except Exception as exc:  # pragma: no cover - optional if pydeck not available
         st.warning(f"Pydeck demo failed: {exc}")
 
