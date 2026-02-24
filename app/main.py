@@ -15,6 +15,13 @@ import base64
 import os
 import sys
 
+# ensure proper UTF-8 output in environments with non-UTF8 locale
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from dotenv import load_dotenv
 # Load .env from project root (parent directory of app/)
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
