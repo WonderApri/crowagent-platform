@@ -21,6 +21,7 @@ import math
 from typing import Dict, List
 
 import pandas as pd
+import numpy as np
 import pydeck as pdk
 import requests
 import streamlit as st
@@ -42,8 +43,8 @@ _MONTH_NAMES = [
 def _colour_from_carbon(carbon: float, min_c: float, max_c: float) -> List[int]:
     """Return RGB colour on a green<->red gradient based on carbon fraction."""
     frac = max(min((carbon - min_c) / (max_c - min_c) if max_c > min_c else 0.0, 1.0), 0.0)
-    start = pd.np.array([0, 194, 168])
-    end = pd.np.array([220, 50, 50])
+    start = np.array([0, 194, 168])
+    end = np.array([220, 50, 50])
     rgb = (start * (1 - frac) + end * frac).astype(int)
     return rgb.tolist()
 
