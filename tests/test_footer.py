@@ -1,4 +1,9 @@
 import importlib
+import os
+import sys
+
+# ensure the package root is discoverable when pytest adjusts sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
 
