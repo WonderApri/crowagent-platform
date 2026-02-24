@@ -313,6 +313,11 @@ h1,h2,h3,h4 {
   border-top: 3px solid #00C2A8;
   box-shadow: 0 2px 8px rgba(7,26,47,.05);
   height: 100%;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(7,26,47,.15);
 }
 .kpi-card.accent-green  { border-top-color: #1DB87A; }
 .kpi-card.accent-gold   { border-top-color: #F0B429; }
@@ -475,19 +480,27 @@ h1,h2,h3,h4 {
   margin: 2px;
 }
 
-/* ── Hide Streamlit default elements ───────────────────────────────────── */
+/* ── Clean up Streamlit defaults without breaking header ─────────────── */
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
-header    { visibility: hidden; }
+/* hide toolbar and status icons but leave header interactive */
+div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hidden; }
+header {
+  background: transparent !important;
+}
 
-/* ── Prevent sidebar collapsing ───────────────────────────────────────────
-   Hide any collapse/expand buttons and disable the hover handle so the
-   sidebar remains permanently visible. */
-button[aria-label="Collapse sidebar"],
-button[aria-label="Expand sidebar"],
-[data-testid="collapsedControl"] {
-  display: none !important;
-  pointer-events: none !important;
+/* ── Sidebar toggle tweaks ─────────────────────────────────────────── */
+button[data-testid="stSidebarCollapseButton"] {
+  visibility: visible !important;
+  color: #00C2A8 !important;
+}
+button[data-testid="stSidebarCollapseButton"]:hover {
+  color: #009688 !important;
+}
+
+/* ensure toggle icon contrast when sidebar is dark */
+[data-testid="stSidebar"] {
+  background: #071A2F !important;
 }
 </style>
 """, unsafe_allow_html=True)
