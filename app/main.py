@@ -739,8 +739,8 @@ with st.sidebar:
     # ── Logo ──────────────────────────────────────────────────────────────────
     if LOGO_URI:
         st.markdown(
-            f"<div style='padding:10px 0 4px;'>"
-            f"<img src='{LOGO_URI}' width='200' style='max-width:100%;' alt='CrowAgent™ Logo'/>"
+            f"<div style='padding:10px 0 4px; text-align:center;'>"
+            f"<img src='{LOGO_URI}' width='200' style='max-width:100%; height:auto; display:inline-block;' alt='CrowAgent™ Logo'/>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -1162,10 +1162,11 @@ _weather_pill = (
 )
 
 if LOGO_URI:
-    _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle;' alt='CrowAgent™ Logo'/>"
+    # ensure logo is vertically centered and not cropped
+    _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle; display:inline-block; height:38px; width:auto;' alt='CrowAgent™ Logo'/>"
 else:
-    _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>🌿 CrowAgent™</span>"
-
+    # fallback text should match branding but no emoji
+    _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>CrowAgent™</span>"
 st.markdown(f"""
 <div class='platform-topbar'>
   <div style='display:flex;align-items:center;gap:16px;flex-wrap:wrap;'>
