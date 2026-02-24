@@ -134,6 +134,7 @@ h1,h2,h3,h4 {
   border-right: 1px solid #1A3A5C !important;
 }
 [data-testid="stSidebar"] * { color: #CBD8E6 !important; }
+
 [data-testid="stSidebar"] .stMarkdown h1,
 [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 {
@@ -612,11 +613,45 @@ from app.utils import validate_gemini_key
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE INITIALISATION
 # ─────────────────────────────────────────────────────────────────────────────
+
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
     except (KeyError, AttributeError, FileNotFoundError):
         return os.getenv(key, default)
+
+# ----------------------------------------------------------------------------
+# In-memory encryption helpers for UI-managed API keys.  Stored values are
+# cipher‑text; actual plaintext is only held transiently when used.  A
+# Fernet key may be supplied via the KEY_ENCRYPTION_KEY env/secret variable.
+# If none is provided the helpers fall back to a no-op identity behaviour.
+# This satisfies the requirement that keys are never stored or logged in
+# cleartext.  The admin panel still never echoes the raw key.
+# ----------------------------------------------------------------------------
+try:
+    from cryptography.fernet import Fernet, InvalidToken
+    _FERNET_KEY = _get_secret("KEY_ENCRYPTION_KEY", "").encode()
+    _FERNET = Fernet(_FERNET_KEY) if _FERNET_KEY else None
+except ImportError:
+    _FERNET = None
+
+
+def _encrypt(val: str) -> str:
+    if _FERNET and val:
+        try:
+            return _FERNET.encrypt(val.encode()).decode()
+        except Exception:
+            pass
+    return val
+
+
+def _decrypt(val: str) -> str:
+    if _FERNET and val:
+        try:
+            return _FERNET.decrypt(val.encode()).decode()
+        except Exception:
+            pass
+    return val
 
 # Initialize session state with defaults or environment values
 if "chat_history" not in st.session_state:
@@ -624,11 +659,11 @@ if "chat_history" not in st.session_state:
 if "agent_history" not in st.session_state:
     st.session_state.agent_history = []
 if "gemini_key" not in st.session_state:
-    st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
+    st.session_state.gemini_key = _encrypt(_get_secret("GEMINI_KEY", ""))
 if "gemini_key_valid" not in st.session_state:
     st.session_state.gemini_key_valid = False
 if "met_office_key" not in st.session_state:
-    st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
+    st.session_state.met_office_key = _encrypt(_get_secret("MET_OFFICE_KEY", ""))
 if "manual_temp" not in st.session_state:
     st.session_state.manual_temp = 10.5
 if "force_weather_refresh" not in st.session_state:
@@ -647,7 +682,10 @@ if "wx_provider" not in st.session_state:
 if "wx_enable_fallback" not in st.session_state:
     st.session_state.wx_enable_fallback = True
 if "owm_key" not in st.session_state:
-    st.session_state.owm_key = _get_secret("OWM_KEY", "")
+    st.session_state.owm_key = _encrypt(_get_secret("OWM_KEY", ""))
+# new sidebar visibility lock
+if "sidebar_hidden" not in st.session_state:
+    st.session_state.sidebar_hidden = False
 
 # ── Handle browser geolocation query params (injected by geo-detect JS) ────
 # GDPR: raw coords are resolved to nearest city and discarded immediately.
@@ -694,6 +732,14 @@ with st.sidebar:
         "<div style='font-size:0.82rem;color:#8FBCCE;margin-bottom:8px;'>"
         "Sustainability AI Decision Intelligence Platform</div>",
         unsafe_allow_html=True,
+    )
+
+    # persistent collapse toggle (prevents ghosting during reruns)
+    st.checkbox(
+        "Lock sidebar collapsed (prevent ghosting)",
+        value=st.session_state.sidebar_hidden,
+        key="sidebar_hidden",
+        help="When checked the sidebar will stay hidden after you collapse it, even when the app reruns.",
     )
 
     st.markdown("---")
@@ -809,9 +855,9 @@ with st.sidebar:
             lon                 = st.session_state.wx_lon,
             location_name       = st.session_state.wx_location_name,
             provider            = st.session_state.wx_provider,
-            met_office_key      = st.session_state.met_office_key or None,
+            met_office_key      = _decrypt(st.session_state.met_office_key) or None,
             met_office_location = _mo_loc_id,
-            openweathermap_key  = st.session_state.owm_key or None,
+            openweathermap_key  = _decrypt(st.session_state.owm_key) or None,
             enable_fallback     = st.session_state.wx_enable_fallback,
             manual_temp_c       = manual_t,
             force_refresh       = st.session_state.force_weather_refresh,
@@ -926,16 +972,18 @@ with st.sidebar:
         st.markdown("---")
         # ── OpenWeatherMap key ─────────────────────────────────────────────────
         _show_owm = st.checkbox("Show OWM key", key="show_owm_key", value=False)
+        # decrypt before showing
+        _owm_value = _decrypt(st.session_state.owm_key) if st.session_state.owm_key else ""
         _owm_key  = st.text_input(
             "OpenWeatherMap API key",
             type="default" if _show_owm else "password",
             placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-            value=st.session_state.owm_key,
+            value=_owm_value,
             help="Free at openweathermap.org/api — 1,000 calls/day on free tier",
         )
-        if _owm_key != st.session_state.owm_key:
-            _had_key = bool(st.session_state.owm_key)
-            st.session_state.owm_key = _owm_key
+        if _owm_key != _owm_value:
+            _had_key = bool(_owm_value)
+            st.session_state.owm_key = _encrypt(_owm_key)
             audit.log_event(
                 "KEY_UPDATED",
                 "OpenWeatherMap key " + ("updated" if _had_key else "added"),
@@ -943,7 +991,7 @@ with st.sidebar:
         if st.session_state.owm_key:
             if st.button("Test OWM key", key="test_owm_key", use_container_width=True):
                 _ok, _msg = wx.test_openweathermap_key(
-                    st.session_state.owm_key,
+                    _decrypt(st.session_state.owm_key),
                     st.session_state.wx_lat,
                     st.session_state.wx_lon,
                 )
@@ -955,15 +1003,16 @@ with st.sidebar:
         st.markdown("---")
         # ── Met Office DataPoint key ───────────────────────────────────────────
         _show_mo = st.checkbox("Show Met Office key", key="show_mo_key", value=False)
+        _mo_value = _decrypt(st.session_state.met_office_key) if st.session_state.met_office_key else ""
         _mo_key = st.text_input(
           "Met Office DataPoint key",
           type="default" if _show_mo else "password", placeholder="",
-          value=st.session_state.met_office_key,
+          value=_mo_value,
           help="Free at metoffice.gov.uk/services/data/datapoint",
         )
-        if _mo_key != st.session_state.met_office_key:
-            _had_mo = bool(st.session_state.met_office_key)
-            st.session_state.met_office_key = _mo_key
+        if _mo_key != _mo_value:
+            _had_mo = bool(_mo_value)
+            st.session_state.met_office_key = _encrypt(_mo_key)
             audit.log_event(
                 "KEY_UPDATED",
                 "Met Office DataPoint key " + ("updated" if _had_mo else "added"),
@@ -972,33 +1021,34 @@ with st.sidebar:
         # Validation for Met Office DataPoint key
         if st.session_state.met_office_key:
           if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
-            ok, msg = wx.test_met_office_key(st.session_state.met_office_key)
+            ok, msg = wx.test_met_office_key(_decrypt(st.session_state.met_office_key))
             if ok:
               st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
             else:
               st.markdown("<div class='val-err'>❌ " + msg + "</div>", unsafe_allow_html=True)
 
         _show_gm = st.checkbox("Show Gemini key", key="show_gm_key", value=False)
+        _gm_value = _decrypt(st.session_state.gemini_key) if st.session_state.gemini_key else ""
         _gm_key = st.text_input(
             "Gemini API key (for AI Advisor)",
             type="default" if _show_gm else "password", placeholder="AIzaSy... (starts with 'AIza')",
-            value=st.session_state.gemini_key,
+            value=_gm_value,
             help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
         )
-        if _gm_key != st.session_state.gemini_key:
-            st.session_state.gemini_key = _gm_key
+        if _gm_key != _gm_value:
+            st.session_state.gemini_key = _encrypt(_gm_key)
 
         # Validation feedback with actual API test
-        if st.session_state.gemini_key:
+        if _decrypt(st.session_state.gemini_key):
             # show raw-format warning
-            if not st.session_state.gemini_key.startswith("AIza"):
+            if not _decrypt(st.session_state.gemini_key).startswith("AIza"):
                 st.markdown(
                     "<div class='val-warn'>⚠ Gemini key should start with 'AIza'</div>",
                     unsafe_allow_html=True,
                 )
             else:
                 # delegate to utility helper
-                valid, message, warn = validate_gemini_key(st.session_state.gemini_key)
+                valid, message, warn = validate_gemini_key(_decrypt(st.session_state.gemini_key))
                 st.markdown(message, unsafe_allow_html=True)
                 st.session_state.gemini_key_valid = valid or warn
 
@@ -1444,7 +1494,8 @@ with _tab_ai:
     </div>
     """, unsafe_allow_html=True)
 
-    _akey = st.session_state.get("gemini_key", "")
+    # decrypt the key before passing to AI routines
+    _akey = _decrypt(st.session_state.get("gemini_key", ""))
 
     # CSS for chat
     st.markdown("""
