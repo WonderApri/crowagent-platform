@@ -568,8 +568,7 @@ if "segment" in _qp:
 if "scenarios" in _qp:
     _qp_scenarios = [s.strip() for s in str(_qp.get("scenarios", "")).split(",") if s.strip()]
     if _qp_scenarios:
-        st.session_state.scenario_selection = _qp_scenarios
-        st.session_state.scenario_multiselect = _qp_scenarios
+        st.session_state.selected_scenario_names = _qp_scenarios
 
 if "user_segment" not in st.session_state:
     st.session_state.user_segment = None # Start unselected to trigger gate
@@ -653,8 +652,7 @@ if not st.session_state.user_segment:
             """, unsafe_allow_html=True)
             if st.button(f"Select {label}", key=f"btn_gate_{seg_id}", use_container_width=True):
                 st.session_state.user_segment = seg_id
-                st.session_state.scenario_selection = _segment_default_scenarios(seg_id)
-                st.session_state.pop("scenario_multiselect", None)
+                st.session_state.selected_scenario_names = _segment_default_scenarios(seg_id)
                 st.query_params["segment"] = seg_id
                 st.rerun()
                 
@@ -671,7 +669,7 @@ def _update_location_query_params() -> None:
     params["lon"] = str(st.session_state.wx_lon)
     if st.session_state.user_segment:
         params["segment"] = st.session_state.user_segment
-    _selected = st.session_state.get("scenario_selection", [])
+    _selected = st.session_state.get("selected_scenario_names", [])
     if _selected:
         params["scenarios"] = ",".join(_selected)
     st.query_params.clear()
@@ -715,28 +713,25 @@ with st.sidebar:
     )
     if st.button("Change Segment / Reset", key="btn_reset_segment"):
         st.session_state.user_segment = None
-        st.session_state.pop("scenario_selection", None)
-        st.session_state.pop("scenario_multiselect", None)
+        st.session_state.pop("selected_scenario_names", None)
         st.query_params.clear()
         st.rerun()
 
     st.markdown("<div class='sb-section'>🧪 Scenarios</div>", unsafe_allow_html=True)
     _scenario_options = list(SCENARIOS.keys())
     _scenario_defaults = [
-        s for s in st.session_state.get("scenario_selection", _segment_default_scenarios(st.session_state.user_segment))
+        s for s in st.session_state.get("selected_scenario_names", _segment_default_scenarios(st.session_state.user_segment))
         if s in SCENARIOS
     ] or _segment_default_scenarios(st.session_state.user_segment)
     _chosen = st.multiselect(
         "Scenario selection",
         options=_scenario_options,
         default=_scenario_defaults,
-        key="scenario_multiselect",
+        key="selected_scenario_names",
         help="Choose one or more intervention scenarios for calculations.",
     )
-    if _chosen:
-        st.session_state.scenario_selection = _chosen
-    else:
-        st.session_state.scenario_selection = _segment_default_scenarios(st.session_state.user_segment)
+    if not _chosen:
+        st.session_state.selected_scenario_names = _segment_default_scenarios(st.session_state.user_segment)
     _update_location_query_params()
 
     st.markdown("---")
@@ -1291,21 +1286,13 @@ with _tab_dash:
         seg = st.session_state.user_segment
         best_saving = max(results.values(), key=lambda r: r.get("energy_saving_pct", 0))
         best_carbon = max(results.values(), key=lambda r: r.get("carbon_saving_t", 0))
-        baseline_energy = baseline_result.get("baseline_energy_mwh", selected_building["baseline_energy_mwh"])
-        baseline_co2 = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
-        baseline_cost = round(baseline_energy * 1000 * 0.28 / 1000, 1)
-
-        def _card(label: str, value: str, sub: str = "", accent: str = "") -> None:
-            _cls = f"kpi-card {accent}".strip()
-            st.markdown(
-                f"""
-                <div class='{_cls}'>
-                  <div class='kpi-label'>{label}</div>
-                  <div class='kpi-value'>{value}</div>
-                  <div class='kpi-sub'>{sub}</div>
-                </div>""",
-                unsafe_allow_html=True,
-            )
+        best_saving_name = next(n for n, r in results.items()
+                                if r is best_saving)
+        best_carbon_name = next(n for n, r in results.items()
+                                if r is best_carbon)
+        baseline_energy = baseline_result.get("baseline_energy_mwh",
+                                              selected_building["baseline_energy_mwh"])
+        baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
 
         k1, k2, k3, k4 = st.columns(4)
 
