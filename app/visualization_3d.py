@@ -25,16 +25,24 @@ try:
 except ImportError:
     _PYDECK_AVAILABLE = False
 
-# ── Fictional Greenfield University campus coordinates (Reading, Berkshire) ──
-# Buildings are placed ~150 m apart — realistic for a campus layout.
-_BUILDING_COORDS: dict[str, dict[str, float]] = {
-    "Greenfield Library":       {"lat": 51.4545, "lon": -0.9712},
-    "Greenfield Arts Building": {"lat": 51.4558, "lon": -0.9695},
-    "Greenfield Science Block": {"lat": 51.4533, "lon": -0.9730},
+# ── Fictional Greenfield University — building offsets from city centre ───────
+# Expressed as (north_m, east_m) so the campus auto-relocates to whatever
+# city the user has selected; positions are ~100-200 m apart (campus-scale).
+_BUILDING_OFFSETS: dict[str, tuple[float, float]] = {
+    "Greenfield Library":       (  60,  -130),   # NW of centre
+    "Greenfield Arts Building": ( 170,   110),   # NE of centre
+    "Greenfield Science Block": (-150,    70),   # SE of centre
 }
 
-# ── Free basemap — CARTO Dark Matter (MapLibre GL compatible, no API key) ────
-_MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+# Fallback/default centre (Reading, Berkshire) — overridden at runtime.
+_DEFAULT_LAT = 51.4543
+_DEFAULT_LON = -0.9781
+
+# ── Basemap styles — CARTO free tier, no API key needed ──────────────────────
+# Positron = light / Google Maps-like (used for 3D Energy Map)
+# Dark Matter = dark (used for 4D Carbon Timeline for contrast)
+_MAP_STYLE_LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+_MAP_STYLE_DARK  = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
 
 # ── UK monthly average temperatures °C — Reading, Berkshire (Met Office) ─────
 _MONTHLY_TEMPS: dict[int, float] = {
@@ -54,12 +62,6 @@ _HEATING_FRACTION = 0.60
 _UK_ANNUAL_AVG_TEMP_C = 11.0   # °C — UK annual mean (Met Office 1991–2020)
 _SETPOINT_C = 21.0             # Part L heating set-point
 
-# ── Campus anchor point ───────────────────────────────────────────────────────
-# Centroid of the three fictional Greenfield buildings — used for the map pin
-# and the OSM Overpass bounding-box.
-_CAMPUS_LAT = 51.4545
-_CAMPUS_LON = -0.9712
-
 # ── Emissions & cost constants ────────────────────────────────────────────────
 _CI               = 0.20482   # kgCO₂e/kWh  (BEIS 2023 grid intensity)
 _ELEC_GBP_PER_KWH = 0.28      # £/kWh        (HESA 2022-23 HE sector average)
@@ -70,6 +72,33 @@ _BUILDING_ICONS: dict[str, str] = {
     "Greenfield Arts Building": "🎨",
     "Greenfield Science Block": "🔬",
 }
+
+
+def _get_map_center() -> tuple[float, float, str]:
+    """Return (lat, lon, location_name) from session state.
+
+    Falls back to Reading, Berkshire when running outside Streamlit (e.g. tests).
+    """
+    lat  = st.session_state.get("wx_lat",  _DEFAULT_LAT)
+    lon  = st.session_state.get("wx_lon",  _DEFAULT_LON)
+    name = st.session_state.get("wx_location_name", "Reading, Berkshire, UK")
+    return float(lat), float(lon), str(name)
+
+
+def _building_coords(center_lat: float, center_lon: float) -> dict[str, dict]:
+    """Compute absolute lat/lon for each fictional campus building.
+
+    Offsets in ``_BUILDING_OFFSETS`` (metres) are converted to degrees
+    at the given centre, so the campus relocates with the selected location.
+    """
+    cos_lat = math.cos(math.radians(center_lat))
+    result: dict[str, dict] = {}
+    for bname, (north_m, east_m) in _BUILDING_OFFSETS.items():
+        result[bname] = {
+            "lat": center_lat + north_m / 111_000.0,
+            "lon": center_lon + east_m / (111_000.0 * cos_lat),
+        }
+    return result
 
 
 def _seasonal_energy_mwh(baseline_mwh: float, month_temp: float) -> float:
@@ -117,11 +146,16 @@ def _carbon_to_rgba(carbon_t: float, min_c: float, max_c: float) -> list[int]:
 # DATA HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _compute_all_buildings(scenario_name: str, weather: dict) -> list[dict]:
+def _compute_all_buildings(
+    scenario_name: str,
+    weather: dict,
+    center_lat: float,
+    center_lon: float,
+) -> list[dict]:
     """
     Run the physics engine for all 3 campus buildings under one scenario.
     Returns a list of row-dicts ready for pydeck, with fill_color and elevation
-    already calculated.
+    already calculated.  Building positions are offsets from (center_lat, center_lon).
     """
     from core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
 
@@ -129,11 +163,12 @@ def _compute_all_buildings(scenario_name: str, weather: dict) -> list[dict]:
     if scenario_cfg is None:
         return []
 
+    bcoords = _building_coords(center_lat, center_lon)
     rows: list[dict] = []
     carbon_values: list[float] = []
 
     for bname, bdata in BUILDINGS.items():
-        coords = _BUILDING_COORDS.get(bname)
+        coords = bcoords.get(bname)
         if coords is None:
             continue
         try:
@@ -199,17 +234,20 @@ _TOOLTIP_HTML_4D = """
 
 def _build_deck(
     rows: list[dict],
+    center_lat: float,
+    center_lon: float,
     osm_rows: list[dict] | None = None,
     selected_building: str | None = None,
     tooltip_html: str = _TOOLTIP_HTML,
+    map_style: str = _MAP_STYLE_LIGHT,
 ) -> "pdk.Deck":
     """Assemble a pydeck Deck with OSM surroundings, location pin, and campus columns.
 
     Layers (bottom → top)
     ─────────────────────
-    1. PolygonLayer  — real OSM building footprints (grey, extruded)
-    2. ColumnLayer   — campus energy columns (colour = carbon intensity)
-    3. ScatterplotLayer — location pin at campus centre (blue dot)
+    1. PolygonLayer     — real OSM building footprints (grey, extruded)
+    2. ColumnLayer      — campus energy columns (colour = carbon intensity)
+    3. ScatterplotLayer — location pin at city centre (blue dot)
     """
     import copy
     # Highlight the selected building with a gold column
@@ -218,9 +256,14 @@ def _build_deck(
         if selected_building and row["name"] == selected_building:
             row["fill_color"] = [255, 215, 0, 240]
 
+    # OSM fill colour varies by basemap for readability
+    is_dark = "dark" in map_style
+    osm_fill  = [80, 90, 105, 80]  if is_dark else [180, 195, 215, 70]
+    osm_line  = [120, 135, 155, 160] if is_dark else [140, 150, 165, 180]
+
     layers: list = []
 
-    # 1 — OSM surrounding buildings
+    # 1 — Real OSM surrounding buildings (PolygonLayer, extruded)
     if osm_rows:
         layers.append(pdk.Layer(
             "PolygonLayer",
@@ -229,8 +272,8 @@ def _build_deck(
             get_elevation="height_m",
             elevation_scale=1,
             extruded=True,
-            get_fill_color=[180, 195, 215, 55],
-            get_line_color=[120, 135, 155, 130],
+            get_fill_color=osm_fill,
+            get_line_color=osm_line,
             line_width_min_pixels=1,
             pickable=False,
         ))
@@ -250,13 +293,13 @@ def _build_deck(
         coverage=1,
     ))
 
-    # 3 — Location pin (blue dot at campus centre)
+    # 3 — Location pin (blue dot at city centre)
     layers.append(pdk.Layer(
         "ScatterplotLayer",
-        data=pd.DataFrame([{"lat": _CAMPUS_LAT, "lon": _CAMPUS_LON}]),
+        data=pd.DataFrame([{"lat": center_lat, "lon": center_lon}]),
         get_position="[lon, lat]",
         get_radius=14,
-        get_fill_color=[30, 144, 255, 220],
+        get_fill_color=[30, 144, 255, 230],
         get_line_color=[255, 255, 255, 255],
         stroked=True,
         line_width_min_pixels=2,
@@ -266,15 +309,15 @@ def _build_deck(
     return pdk.Deck(
         layers=layers,
         initial_view_state=pdk.ViewState(
-            latitude=_CAMPUS_LAT,
-            longitude=_CAMPUS_LON,
+            latitude=center_lat,
+            longitude=center_lon,
             zoom=15.5,
             pitch=50,
             bearing=-10,
         ),
         tooltip={"html": tooltip_html,
                  "style": {"backgroundColor": "transparent", "border": "none"}},
-        map_style=_MAP_STYLE,
+        map_style=map_style,
     )
 
 
@@ -318,18 +361,24 @@ def _render_2d_fallback(rows: list[dict]) -> None:
 def _render_3d_map(
     scenario_name: str,
     weather: dict,
+    center_lat: float,
+    center_lon: float,
     osm_rows: list[dict] | None = None,
     selected_building: str | None = None,
 ) -> None:
-    """Render the static 3D column map for the selected scenario."""
-    rows = _compute_all_buildings(scenario_name, weather)
+    """Render the static 3D column map for the selected scenario (light basemap)."""
+    rows = _compute_all_buildings(scenario_name, weather, center_lat, center_lon)
     if not rows:
         st.info("No building data available for the selected scenario.")
         return
 
     try:
-        deck = _build_deck(rows, osm_rows=osm_rows,
-                           selected_building=selected_building)
+        deck = _build_deck(
+            rows, center_lat, center_lon,
+            osm_rows=osm_rows,
+            selected_building=selected_building,
+            map_style=_MAP_STYLE_LIGHT,
+        )
         st.pydeck_chart(deck, use_container_width=True)
     except Exception as exc:
         st.warning(f"3D map could not render ({exc}). Showing 2D fallback.")
@@ -342,6 +391,8 @@ def _render_3d_map(
 
 def _render_4d_timeline(
     weather: dict,
+    center_lat: float,
+    center_lon: float,
     osm_rows: list[dict] | None = None,
     selected_building: str | None = None,
 ) -> None:
@@ -349,7 +400,7 @@ def _render_4d_timeline(
     4D mode: scrub through Jan–Dec with a time slider.
     Monthly energy/carbon is computed via the seasonal HDD model so that
     winter months show taller/redder columns than summer months, reflecting
-    real UK heating demand patterns.
+    real UK heating demand patterns.  Uses dark basemap for contrast.
     """
     from core.physics import BUILDINGS
 
@@ -363,11 +414,12 @@ def _render_4d_timeline(
     )
 
     month_temp = _MONTHLY_TEMPS[month]
+    bcoords = _building_coords(center_lat, center_lon)
     rows: list[dict] = []
     carbon_values: list[float] = []
 
     for bname, bdata in BUILDINGS.items():
-        coords = _BUILDING_COORDS.get(bname)
+        coords = bcoords.get(bname)
         if coords is None:
             continue
 
@@ -405,9 +457,13 @@ def _render_4d_timeline(
     )
 
     try:
-        deck = _build_deck(rows, osm_rows=osm_rows,
-                           selected_building=selected_building,
-                           tooltip_html=_TOOLTIP_HTML_4D)
+        deck = _build_deck(
+            rows, center_lat, center_lon,
+            osm_rows=osm_rows,
+            selected_building=selected_building,
+            tooltip_html=_TOOLTIP_HTML_4D,
+            map_style=_MAP_STYLE_DARK,
+        )
         st.pydeck_chart(deck, use_container_width=True)
     except Exception as exc:
         st.warning(f"3D map could not render ({exc})")
@@ -451,8 +507,10 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
 
     selected_building: str | None = st.session_state.viz3d_selected_building
 
-    # ── Section header with location label ───────────────────────────────────
-    location_label = st.session_state.get("wx_location_name", "Reading, Berkshire, UK")
+    # ── Real selected location ────────────────────────────────────────────────
+    center_lat, center_lon, location_label = _get_map_center()
+
+    # ── Section header with live location label ───────────────────────────────
     st.markdown(
         f"<div class='sec-hdr'>🗺️ 3D Campus Energy &amp; Carbon Map"
         f"<span style='font-size:0.72rem;color:#5A7A90;font-weight:400;"
@@ -486,9 +544,9 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
             )
             scenario_for_map = "Baseline (No Intervention)"
 
-    # ── Fetch surrounding OSM buildings (cached 24 h) ─────────────────────────
-    with st.spinner("Loading surrounding buildings…"):
-        osm_rows = fetch_osm_buildings(_CAMPUS_LAT, _CAMPUS_LON, radius_m=600)
+    # ── Fetch real surrounding buildings from OSM at the selected location ──────
+    with st.spinner(f"Loading buildings around {location_label}…"):
+        osm_rows = fetch_osm_buildings(center_lat, center_lon, radius_m=600)
 
     # ── Hover tip above the map ───────────────────────────────────────────────
     if selected_building:
@@ -509,11 +567,18 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
 
     # ── Render chosen map mode ────────────────────────────────────────────────
     if view_mode == "3D Energy Map":
-        _render_3d_map(scenario_for_map, weather,
-                       osm_rows=osm_rows, selected_building=selected_building)
+        _render_3d_map(
+            scenario_for_map, weather,
+            center_lat, center_lon,
+            osm_rows=osm_rows,
+            selected_building=selected_building,
+        )
     else:
-        _render_4d_timeline(weather,
-                            osm_rows=osm_rows, selected_building=selected_building)
+        _render_4d_timeline(
+            weather, center_lat, center_lon,
+            osm_rows=osm_rows,
+            selected_building=selected_building,
+        )
 
     # ── Legend + attribution bar ──────────────────────────────────────────────
     st.markdown(
@@ -575,7 +640,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
   <div style='font-size:0.78rem;font-weight:600;color:#E0EAF0;
               margin:4px 0 2px;'>{short}</div>
   <div style='font-size:0.68rem;color:#5A7A90;'>
-    {_BUILDING_COORDS[bname].get('address','Whiteknights, Reading').split(',')[0]}
+    Greenfield Campus
   </div>
 </div>""",
                 unsafe_allow_html=True,
@@ -622,9 +687,9 @@ def _render_building_info_panel(
     from core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
 
     bdata  = BUILDINGS.get(building_name)
-    coords = _BUILDING_COORDS.get(building_name, {})
     if bdata is None:
         return
+    _, _, location_label = _get_map_center()
 
     icon = _BUILDING_ICONS.get(building_name, "🏢")
 
@@ -637,7 +702,7 @@ def _render_building_info_panel(
     {icon} {building_name}
   </div>
   <div style='font-size:0.76rem;color:#8FBCCE;margin-top:3px;'>
-    📍 {coords.get("address", "Whiteknights Campus, Reading RG6 6AF")}
+    📍 Greenfield Campus · {location_label}
   </div>
   <div style='font-size:0.74rem;color:#5A7A90;margin-top:2px;'>
     {bdata.get("building_type","University building")} &nbsp;·&nbsp;
