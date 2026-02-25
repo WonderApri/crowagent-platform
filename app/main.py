@@ -100,7 +100,6 @@ def _load_logo_uri() -> str:
             except Exception as e:
                 st.warning(f"Failed to read logo file at {path}: {e}")
                 return ""
-    st.warning("CrowAgent logo asset not found; falling back to text/emoji branding.")
     return ""
 
 def _load_icon_uri() -> str:
@@ -117,9 +116,7 @@ def _load_icon_uri() -> str:
                     b64 = base64.b64encode(fh.read()).decode()
                 return f"data:image/svg+xml;base64,{b64}"
             except Exception as e:
-                st.warning(f"Failed to read icon file at {path}: {e}")
                 return ""
-    st.warning("CrowAgent icon asset not found; falling back to emoji favicon.")
     return ""
 
 LOGO_URI = _load_logo_uri()
@@ -136,13 +133,6 @@ st.set_page_config(
     menu_items   = {
         "Get Help":     "mailto:crowagent.platform@gmail.com",
         "Report a bug": "https://github.com/WonderApri/crowagent-platform/issues",
-        "About": (
-            "**CrowAgent™ Platform — Sustainability AI Decision Intelligence**\n\n"
-            "© 2026 Aparajita Parihar. All rights reserved.\n\n"
-            "⚠️ PROTOTYPE: Results are indicative only and based on simplified "
-            "physics models. Not for use as the sole basis for investment decisions.\n\n"
-            "CrowAgent™ is an unregistered trademark · UK IPO Class 42 pending"
-        ),
     },
 )
 
@@ -153,15 +143,15 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Nunito+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap');
 
-/* ── Global resets ─────────────────────────────────────────────────────── */
+/* Global resets */
 html, body, [class*="css"] { font-family: 'Nunito Sans', sans-serif !important; }
 h1,h2,h3,h4 { font-family: 'Rajdhani', sans-serif !important; letter-spacing: 0.3px; }
 
-/* ── App background ────────────────────────────────────────────────────── */
+/* App background */
 [data-testid="stAppViewContainer"] > .main { background: #F0F4F8; }
 .block-container { padding-top: 0 !important; max-width: 100% !important; }
 
-/* ── Sidebar ───────────────────────────────────────────────────────────── */
+/* Sidebar */
 [data-testid="stSidebar"] { background: #071A2F !important; border-right: 1px solid #1A3A5C !important; }
 [data-testid="stSidebar"] * { color: #CBD8E6 !important; }
 [data-testid="stSidebar"] .stMarkdown h1, [data-testid="stSidebar"] .stMarkdown h2, [data-testid="stSidebar"] .stMarkdown h3 { color: #00C2A8 !important; }
@@ -172,11 +162,11 @@ h1,h2,h3,h4 { font-family: 'Rajdhani', sans-serif !important; letter-spacing: 0.
 [data-testid="stSidebar"] .stButton button { background: #0D2640 !important; border: 1px solid #00C2A8 !important; color: #00C2A8 !important; font-size: 0.82rem !important; font-weight: 600 !important; padding: 4px 10px !important; }
 [data-testid="stSidebar"] .stButton button:hover { background: #00C2A8 !important; color: #071A2F !important; }
 
-/* ── Platform header bar ───────────────────────────────────────────────── */
+/* Platform header bar */
 .platform-topbar { background: linear-gradient(135deg, #071A2F 0%, #0D2640 60%, #0A2E40 100%); border-bottom: 2px solid #00C2A8; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .platform-topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-/* ── Status pills ──────────────────────────────────────────────────────── */
+/* Status pills */
 .sp { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:0.78rem; font-weight:700; letter-spacing:0.3px; white-space:nowrap; }
 .sp-live   { background:rgba(29,184,122,.12); color:#1DB87A; border:1px solid rgba(29,184,122,.3); }
 .sp-cache  { background:rgba(240,180,41,.1);  color:#F0B429; border:1px solid rgba(240,180,41,.25); }
@@ -185,58 +175,36 @@ h1,h2,h3,h4 { font-family: 'Rajdhani', sans-serif !important; letter-spacing: 0.
 .pulse-dot { width:7px; height:7px; border-radius:50%; background:#1DB87A; display:inline-block; animation: blink 2s ease-in-out infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-/* ── Tab navigation ────────────────────────────────────────────────────── */
+/* Tab navigation */
 .stTabs [data-baseweb="tab-list"] { background: #ffffff !important; border-bottom: 2px solid #E0EBF4 !important; gap: 0 !important; padding: 0 !important; }
 .stTabs [data-baseweb="tab"] { background: transparent !important; color: #3A576B !important; font-family: 'Rajdhani', sans-serif !important; font-size: 0.88rem !important; font-weight: 600 !important; letter-spacing: 0.5px !important; padding: 10px 20px !important; border-bottom: 3px solid transparent !important; }
 .stTabs [aria-selected="true"] { color: #071A2F !important; border-bottom: 3px solid #00C2A8 !important; background: rgba(0,194,168,.04) !important; }
 .stTabs [data-baseweb="tab-panel"] { padding: 20px 0 0 0 !important; }
 
-/* ── Section headers ───────────────────────────────────────────────────── */
+/* Section headers */
 .sec-hdr { font-family: 'Rajdhani', sans-serif; font-size: 0.84rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #00C2A8; border-bottom: 1px solid rgba(0,194,168,.2); padding-bottom: 6px; margin-bottom: 14px; margin-top: 4px; }
 
-/* ── Chart containers ──────────────────────────────────────────────────── */
+/* Chart containers */
 .chart-card { background: #ffffff; border-radius: 8px; border: 1px solid #E0EBF4; padding: 18px 18px 10px; box-shadow: 0 2px 8px rgba(7,26,47,.04); margin-bottom: 16px; }
 .chart-title { font-family: 'Rajdhani', sans-serif; font-size: 0.88rem; font-weight: 700; letter-spacing: 0.5px; color: #071A2F; margin-bottom: 4px; text-transform: uppercase; }
 .chart-caption { font-size: 0.77rem; color: #6A92AA; margin-top: 4px; font-style: italic; }
 
-/* ── Disclaimer banners ────────────────────────────────────────────────── */
+/* Disclaimer banners */
 .disc-prototype { background: rgba(240,180,41,.07); border: 1px solid rgba(240,180,41,.3); border-left: 4px solid #F0B429; border-radius: 0 6px 6px 0; padding: 10px 16px; font-size: 0.82rem; color: #6A5010; line-height: 1.55; margin: 10px 0; }
 .disc-ai { background: rgba(0,194,168,.05); border: 1px solid rgba(0,194,168,.2); border-left: 4px solid #00C2A8; border-radius: 0 6px 6px 0; padding: 10px 16px; font-size: 0.82rem; color: #1A5A50; line-height: 1.55; margin: 10px 0; }
 .disc-data { background: rgba(7,26,47,.04); border: 1px solid rgba(7,26,47,.12); border-left: 4px solid #071A2F; border-radius: 0 6px 6px 0; padding: 10px 16px; font-size: 0.82rem; color: #3A5268; line-height: 1.55; margin: 10px 0; }
 
-/* ── Weather widget (sidebar) ──────────────────────────────────────────── */
+/* Weather widget */
 .wx-widget { background: #0D2640; border: 1px solid #1A3A5C; border-radius: 8px; padding: 12px 14px; margin: 6px 0; }
 .wx-temp { font-family: 'Rajdhani', sans-serif; font-size: 2rem; font-weight: 700; color: #ffffff; display: inline-block; line-height: 1; }
 .wx-desc { font-size: 0.82rem; color: #A8C8D8; margin-top: 2px; }
 .wx-row  { font-size: 0.78rem; color: #CBD8E6; margin-top: 5px; }
 
-/* ── Contact cards ─────────────────────────────────────────────────────── */
-.contact-card { background: #ffffff; border-radius: 8px; border: 1px solid #E0EBF4; padding: 20px 22px; box-shadow: 0 2px 8px rgba(7,26,47,.05); }
-.contact-label { font-family: 'Rajdhani', sans-serif; font-size: 0.80rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #00C2A8; margin-bottom: 4px; }
-.contact-val { font-size: 0.88rem; color: #071A2F; font-weight: 600; }
-
-/* ── Enterprise footer ─────────────────────────────────────────────────── */
-.ent-footer { background: #071A2F; border-top: 2px solid #00C2A8; padding: 16px 24px; margin-top: 32px; text-align: center; display: flex; flex-direction: column; align-items: center; }
-
-/* ── Validation messages ───────────────────────────────────────────────── */
-.val-warn { background: rgba(232,76,76,.06); border: 1px solid rgba(232,76,76,.25); border-left: 3px solid #E84C4C; border-radius: 0 4px 4px 0; padding: 7px 12px; font-size: 0.80rem; color: #8B1A1A; }
-.val-ok { background: rgba(29,184,122,.06); border: 1px solid rgba(29,184,122,.25); border-left: 3px solid #1DB87A; border-radius: 0 4px 4px 0; padding: 7px 12px; font-size: 0.80rem; color: #0A4A28; }
-.val-err { background: rgba(220,53,69,.08); border: 1px solid rgba(220,53,69,.3); border-left: 3px solid #DC3545; border-radius: 0 4px 4px 0; padding: 7px 12px; font-size: 0.80rem; color: #721C24; }
-
-/* ── Sidebar section label ─────────────────────────────────────────────── */
-.sb-section { font-family: 'Rajdhani', sans-serif; font-size: 0.80rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #00C2A8 !important; margin: 14px 0 6px 0; }
-
-/* ── Info chip ─────────────────────────────────────────────────────────── */
-.chip { display: inline-block; background: #0D2640; border: 1px solid #1A3A5C; border-radius: 4px; padding: 2px 8px; font-size: 0.78rem; color: #9ABDD0; margin: 2px; }
-
-/* ── Clean up Streamlit defaults ─────────────── */
+/* Clean up Streamlit defaults */
 #MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
 div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hidden; }
 header { background: transparent !important; }
-button[data-testid="stSidebarCollapseButton"] { visibility: visible !important; color: #00C2A8 !important; }
-button[data-testid="stSidebarCollapseButton"]:hover { color: #009688 !important; }
-[data-testid="stSidebar"] { background: #071A2F !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -428,17 +396,6 @@ elif "city" in _qp:
         st.session_state.wx_location_name = f"{_city}, {_meta['country']}"
         st.session_state.force_weather_refresh = True
     st.query_params.clear()
-elif "lat" in _qp and "lon" in _qp:
-    try:
-        _lat = float(_qp.get("lat"))
-        _lon = float(_qp.get("lon"))
-        st.session_state.wx_lat = _lat
-        st.session_state.wx_lon = _lon
-        st.session_state.wx_city = "" 
-        st.session_state.wx_location_name = f"Custom site ({_lat:.4f}, {_lon:.4f})"
-        st.session_state.force_weather_refresh = True
-    except Exception: pass
-    st.query_params.clear()
 
 def _update_location_query_params() -> None:
     params: dict[str, str] = {}
@@ -478,25 +435,11 @@ with st.sidebar:
     sb = _active_buildings[selected_building_name]
     st.markdown(f"<div style='font-size:0.76rem;color:#9ABDD0;line-height:1.5;'><span class='chip'>{sb['building_type']}</span> <span class='chip'>{sb['built_year']}</span> <span class='chip'>{sb['floor_area_m2']:,} m²</span></div>", unsafe_allow_html=True)
 
-    with st.expander("➕ Add building", expanded=False):
-        st.markdown("<div style='font-size:0.75rem;color:#8FBCCE;'>Enter JSON (must include \"name\")</div>", unsafe_allow_html=True)
-        cb = st.text_area("Building JSON", height=120)
-        if st.button("Add building", key="add_building_btn"):
-            ok, msg = _add_building_from_json(cb)
-            if ok: st.success(msg)
-            else: st.error(msg)
     st.markdown("---")
 
     st.markdown("<div class='sb-section'>🔧 Scenarios</div>", unsafe_allow_html=True)
     selected_scenario_names = st.multiselect("Scenarios", list(SCENARIOS.keys()), default=["Baseline (No Intervention)", "Solar Glass Installation", "Enhanced Insulation Upgrade", "Combined Package (All Interventions)"], label_visibility="collapsed")
     
-    with st.expander("➕ Add scenario", expanded=False):
-        st.markdown("<div style='font-size:0.75rem;color:#8FBCCE;'>Enter JSON (must include \"name\")</div>", unsafe_allow_html=True)
-        cs = st.text_area("Scenario JSON", height=120)
-        if st.button("Add scenario", key="add_scenario_btn"):
-            ok, msg = _add_scenario_from_json(cs)
-            if ok: st.success(msg)
-            else: st.error(msg)
     if not selected_scenario_names:
         st.markdown("<div class='val-warn'>⚠ Select at least one scenario to continue.</div>", unsafe_allow_html=True)
         st.stop()
@@ -513,33 +456,7 @@ with st.sidebar:
         st.session_state.wx_lon = _meta["lon"]
         st.session_state.wx_location_name = f"{_sel_city}, {_meta['country']}"
         st.session_state.force_weather_refresh = True
-        audit.log_event("LOCATION_CHANGED", f"City set to '{_sel_city}'")
         _update_location_query_params()
-
-    with st.expander("⚙ Custom coordinates", expanded=False):
-        _col_lat, _col_lon = st.columns(2)
-        with _col_lat: _custom_lat = st.number_input("Latitude", value=float(st.session_state.wx_lat), format="%.4f")
-        with _col_lon: _custom_lon = st.number_input("Longitude", value=float(st.session_state.wx_lon), format="%.4f")
-        if st.button("Apply", key="apply_coords", use_container_width=True):
-            st.session_state.wx_lat = _custom_lat
-            st.session_state.wx_lon = _custom_lon
-            st.session_state.wx_location_name = f"Custom site ({_custom_lat:.4f}, {_custom_lon:.4f})"
-            st.session_state.force_weather_refresh = True
-            _update_location_query_params()
-        
-    _geo = loc.render_geo_detect()
-    if _geo and isinstance(_geo, dict):
-        try:
-            _lat = float(_geo.get("lat"))
-            _lon = float(_geo.get("lon"))
-            _resolved = loc.nearest_city(_lat, _lon)
-            st.session_state.wx_city = _resolved
-            st.session_state.wx_lat = _lat
-            st.session_state.wx_lon = _lon
-            st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
-            st.session_state.force_weather_refresh = True
-            _update_location_query_params()
-        except Exception: pass
 
     st.markdown("---")
     st.markdown("<div class='sb-section'>🌤 Live Weather</div>", unsafe_allow_html=True)
@@ -567,54 +484,23 @@ with st.sidebar:
     status_dot = "<span class='pulse-dot'></span>" if weather["is_live"] else "○"
     status_text = f"Live · {mins_ago}m ago" if weather["is_live"] else "Manual override"
 
-    st.markdown(f"""<div class='wx-widget'><div style='display:flex;justify-content:space-between;align-items:flex-start;'><div><div style='font-size:1.4rem;line-height:1;'>{weather['condition_icon']}</div><div class='wx-temp'>{weather['temperature_c']}°C</div><div class='wx-desc'>{weather['condition']}</div></div><div style='text-align:right;'><div style='font-size:0.76rem;color:#8FBCCE;'>{weather['location_name']}</div></div></div><div class='wx-row'>💨 {weather['wind_speed_mph']} mph {wdir_lbl} &nbsp;|&nbsp; 💧 {weather['humidity_pct']}% &nbsp;|&nbsp; 🌡️ {weather['feels_like_c']}°C feels like</div><div style='margin-top:6px;'><span class='{status_class}'>{status_dot} {status_text}</span></div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""
+<div class='wx-widget'>
+    <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
+        <div>
+            <div style='font-size:1.4rem;line-height:1;'>{weather['condition_icon']}</div>
+            <div class='wx-temp'>{weather['temperature_c']}°C</div>
+            <div class='wx-desc'>{weather['condition']}</div>
+        </div>
+        <div style='text-align:right;'>
+            <div style='font-size:0.76rem;color:#8FBCCE;'>{weather['location_name']}</div>
+        </div>
+    </div>
+    <div class='wx-row'>💨 {weather['wind_speed_mph']} mph {wdir_lbl} &nbsp;|&nbsp; 💧 {weather['humidity_pct']}%</div>
+    <div style='margin-top:6px;'><span class='{status_class}'>{status_dot} {status_text}</span></div>
+</div>
+""", unsafe_allow_html=True)
     st.caption(f"📡 {weather['source']}")
-    st.markdown("---")
-
-    with st.expander("🔑 API Keys & Weather Config", expanded=False):
-        st.markdown("<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'><div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div><div style='font-size:0.78rem;color:#664D03;line-height:1.5;'>• Keys exist in your session only (cleared on browser close)<br/>• Your keys are <strong>never</strong> stored on the server<br/>• Each user enters their own key independently<br/>• Use unique, disposable API keys if sharing this link</div></div><br/>", unsafe_allow_html=True)
-        
-        _provider_labels = {"open_meteo": "Open-Meteo (free, no key)", "openweathermap": "OpenWeatherMap (key required)", "met_office": "Met Office DataPoint (UK, key required)"}
-        _provider_keys = list(_provider_labels.keys())
-        _cur_prov_idx = _provider_keys.index(st.session_state.wx_provider) if st.session_state.wx_provider in _provider_keys else 0
-        _sel_provider = st.selectbox("Weather provider", _provider_keys, index=_cur_prov_idx, format_func=lambda k: _provider_labels[k])
-        if _sel_provider != st.session_state.wx_provider:
-            st.session_state.wx_provider = _sel_provider
-            st.session_state.force_weather_refresh = True
-
-        _fb = st.checkbox("Fall back to Open-Meteo if primary fails", value=st.session_state.wx_enable_fallback)
-        if _fb != st.session_state.wx_enable_fallback: st.session_state.wx_enable_fallback = _fb
-        st.markdown("---")
-
-        _show_owm = st.checkbox("Show OWM key", key="show_owm_key", value=False)
-        _owm_value = st.session_state.owm_key
-        _owm_key = st.text_input("OpenWeatherMap API key", type="default" if _show_owm else "password", value=_owm_value)
-        if _owm_key != _owm_value: st.session_state.owm_key = _owm_key
-
-        st.markdown("---")
-        _show_mo = st.checkbox("Show Met Office key", key="show_mo_key", value=False)
-        _mo_value = st.session_state.met_office_key
-        _mo_key = st.text_input("Met Office DataPoint key", type="default" if _show_mo else "password", value=_mo_value)
-        if _mo_key != _mo_value: st.session_state.met_office_key = _mo_key
-
-        _show_gm = st.checkbox("Show Gemini key", key="show_gm_key", value=False)
-        _gm_value = st.session_state.gemini_key
-        _gm_key = st.text_input("Gemini API key (for AI Advisor)", type="default" if _show_gm else "password", value=_gm_value)
-        if _gm_key != _gm_value: st.session_state.gemini_key = _gm_key
-        if st.session_state.gemini_key:
-            if not st.session_state.gemini_key.startswith("AIza"):
-                st.markdown("<div class='val-warn'>⚠ Gemini key should start with 'AIza'</div>", unsafe_allow_html=True)
-            else:
-                valid, message, warn = validate_gemini_key(st.session_state.gemini_key)
-                st.markdown(message, unsafe_allow_html=True)
-                st.session_state.gemini_key_valid = valid or warn
-
-    st.markdown("---")
-    if LOGO_URI:
-        _footer_logo = f"<img src='{LOGO_URI}' height='28' style='vertical-align:middle;display:inline-block;height:28px;width:auto;' alt='CrowAgent™ Logo'/>"
-    else:
-        _footer_logo = "<span style='font-family:Rajdhani,sans-serif;font-size:1.1rem;font-weight:700;color:#00C2A8;'>CrowAgent™</span>"
-    st.markdown(f"<div class='ent-footer'>{_footer_logo}<div style='font-size:0.76rem;color:#9ABDD0;line-height:1.6;margin-top:8px;'>© 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>v2.0.0 · Prototype</div></div>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPUTE ALL SELECTED SCENARIOS
@@ -647,8 +533,6 @@ st.markdown(f"""
 
 if _compute_errors:
     for _err in _compute_errors: st.error(f"Computation error — {_err}")
-
-st.markdown("<div class='disc-prototype'><strong>⚠️ Working Prototype — Results Are Indicative Only.</strong> This platform uses simplified physics models calibrated against published UK higher education sector averages. Outputs should not be used as the sole basis for capital investment decisions. Consult a qualified energy surveyor before committing to any retrofit programme. Greenfield University is a fictional institution used for demonstration purposes. All data is illustrative.</div>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN NAVIGATION TABS
@@ -702,52 +586,50 @@ with _tab_dash:
             best_scen_cost_saved = sc_cost_saved
             best_scen_payback = (sc_install_cost / sc_cost_saved) if sc_cost_saved > 0 else 0
 
-    # ── LAYER 1: CAMPUS SCORECARD HERO ────────────────────────────────────────
+    # ── LAYER 1: CAMPUS SCORECARD HERO (Stripped format to prevent code blocks) ──
     st.markdown(f"""
-    <div style='background:#071A2F; border: 2px solid #00C2A8; border-radius: 8px; padding: 20px; color: #CBD8E6; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(7,26,47,0.15);'>
-        <h2 style='color:#00C2A8; margin-top:0; margin-bottom:4px; font-family:Rajdhani,sans-serif; font-weight: 700; letter-spacing: 0.5px;'>
-            🌍 Greenfield Campus — Sustainability Snapshot
-        </h2>
-        <div style='font-size:0.85rem; color:#8FBCCE; margin-bottom:16px;'>
-            📍 {st.session_state.wx_location_name} &nbsp;·&nbsp; {len(_active_buildings)} buildings &nbsp;·&nbsp; Baseline scenario
-        </div>
-        
-        <div style='display:flex; gap:24px; flex-wrap:wrap; border-top:1px solid #1A3A5C; border-bottom:1px solid #1A3A5C; padding:16px 0; margin-bottom:16px;'>
-            <div style='flex:1; min-width:150px;'>
-                <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Total Energy</div>
-                <div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
-                    {campus_energy:,.0f} <span style='font-size:1rem; color:#8FBCCE;'>MWh/yr</span>
-                </div>
-                <div style='margin-top:6px; display:inline-block; background:{campus_epc["epc_colour"]}; color:#fff; padding:3px 10px; border-radius:4px; font-size:0.85rem; font-weight:bold;'>
-                    {campus_epc["epc_band"]}-rated Average
-                </div>
-            </div>
-            <div style='flex:1; min-width:150px;'>
-                <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Total Carbon</div>
-                <div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
-                    {campus_carbon:,.0f} <span style='font-size:1rem; color:#8FBCCE;'>t CO₂e/yr</span>
-                </div>
-            </div>
-            <div style='flex:1; min-width:150px;'>
-                <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Annual Energy Cost</div>
-                <div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
-                    £{campus_cost/1000:,.0f}k <span style='font-size:1rem; color:#8FBCCE;'>/yr</span>
-                </div>
-                <div style='font-size:0.8rem; color:#A8C8D8; margin-top:4px;'>≈ £{campus_cost/365:,.0f} per day</div>
-            </div>
-        </div>
-        
-        <div style='background:#0D2640; border-left:4px solid #1DB87A; padding:12px 16px; border-radius:4px;'>
-            <div style='color:#1DB87A; font-weight:700; font-size:0.9rem; margin-bottom:4px; font-family:Rajdhani,sans-serif;'>
-                ✨ Best available saving: {best_scen_name.split(' (')[0]}
-            </div>
-            <div style='font-size:0.85rem; color:#CBD8E6;'>
-                Saves <strong>{best_scen_saving_pct:.0f}%</strong> (£{best_scen_cost_saved/1000:,.0f}k/yr) 
-                &nbsp;·&nbsp; Payback: <strong>{best_scen_payback:.1f} yrs</strong> 
-                &nbsp;·&nbsp; Carbon reduction: <strong>{best_scen_carbon_saved:.0f} tonnes/yr</strong>
-            </div>
-        </div>
-    </div>
+<div style='background:#071A2F; border: 2px solid #00C2A8; border-radius: 8px; padding: 20px; color: #CBD8E6; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(7,26,47,0.15);'>
+<h2 style='color:#00C2A8; margin-top:0; margin-bottom:4px; font-family:Rajdhani,sans-serif; font-weight: 700; letter-spacing: 0.5px;'>
+🌍 Greenfield Campus — Sustainability Snapshot
+</h2>
+<div style='font-size:0.85rem; color:#8FBCCE; margin-bottom:16px;'>
+📍 {st.session_state.wx_location_name} &nbsp;·&nbsp; {len(_active_buildings)} buildings &nbsp;·&nbsp; Baseline scenario
+</div>
+<div style='display:flex; gap:24px; flex-wrap:wrap; border-top:1px solid #1A3A5C; border-bottom:1px solid #1A3A5C; padding:16px 0; margin-bottom:16px;'>
+<div style='flex:1; min-width:150px;'>
+<div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Total Energy</div>
+<div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
+{campus_energy:,.0f} <span style='font-size:1rem; color:#8FBCCE;'>MWh/yr</span>
+</div>
+<div style='margin-top:6px; display:inline-block; background:{campus_epc["epc_colour"]}; color:#fff; padding:3px 10px; border-radius:4px; font-size:0.85rem; font-weight:bold;'>
+{campus_epc["epc_band"]}-rated Average
+</div>
+</div>
+<div style='flex:1; min-width:150px;'>
+<div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Total Carbon</div>
+<div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
+{campus_carbon:,.0f} <span style='font-size:1rem; color:#8FBCCE;'>t CO₂e/yr</span>
+</div>
+</div>
+<div style='flex:1; min-width:150px;'>
+<div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Annual Energy Cost</div>
+<div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
+£{campus_cost/1000:,.0f}k <span style='font-size:1rem; color:#8FBCCE;'>/yr</span>
+</div>
+<div style='font-size:0.8rem; color:#A8C8D8; margin-top:4px;'>≈ £{campus_cost/365:,.0f} per day</div>
+</div>
+</div>
+<div style='background:#0D2640; border-left:4px solid #1DB87A; padding:12px 16px; border-radius:4px;'>
+<div style='color:#1DB87A; font-weight:700; font-size:0.9rem; margin-bottom:4px; font-family:Rajdhani,sans-serif;'>
+✨ Best available saving: {best_scen_name.split(' (')[0]}
+</div>
+<div style='font-size:0.85rem; color:#CBD8E6;'>
+Saves <strong>{best_scen_saving_pct:.0f}%</strong> (£{best_scen_cost_saved/1000:,.0f}k/yr) 
+&nbsp;·&nbsp; Payback: <strong>{best_scen_payback:.1f} yrs</strong> 
+&nbsp;·&nbsp; Carbon reduction: <strong>{best_scen_carbon_saved:.0f} tonnes/yr</strong>
+</div>
+</div>
+</div>
     """, unsafe_allow_html=True)
 
     # ── LAYER 2: EPC-STYLE BUILDING CARDS ─────────────────────────────────────
@@ -796,26 +678,26 @@ with _tab_dash:
         
         with card_cols[idx]:
             st.markdown(f"""
-            <div style='border: 2px solid {border_col}; border-radius: 8px; background: {bg_col}; padding: 18px 16px; {shadow} height: 100%; transition: all 0.2s;'>
-                <div style='font-family:Rajdhani,sans-serif; font-size:1.15rem; font-weight:700; color:#071A2F; margin-bottom:12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>
-                    {icon} {bname.replace("Greenfield ", "")}
-                </div>
-                <div style='display:flex; align-items:center; gap:10px; margin-bottom:14px;'>
-                    <div style='background:{b_epc["epc_colour"]}; color:white; font-size:1.4rem; font-weight:bold; font-family:Rajdhani,sans-serif; padding:2px 14px; border-radius:4px;'>
-                        {b_epc["epc_band"]}
-                    </div>
-                    <div style='height:8px; flex:1; background:linear-gradient(to right, #00873D 20%, #F0B429 50%, #C0392B 80%); border-radius:4px; opacity:0.4;'></div>
-                </div>
-                <div style='font-size:0.85rem; color:#3A576B; line-height:1.7; margin-bottom:14px;'>
-                    <strong style='color:#071A2F;'>{b_energy:,.0f}</strong> MWh/yr<br>
-                    <strong style='color:#071A2F;'>{b_carbon:,.1f}</strong> tonnes CO₂e<br>
-                    <strong style='color:#071A2F;'>£{b_cost/1000:,.0f}k</strong>/yr
-                </div>
-                <div style='background:#F0F4F8; padding:10px 12px; border-radius:6px; font-size:0.8rem; color:#071A2F; border-left: 3px solid #00C2A8;'>
-                    <div style='font-weight:700; color:#00C2A8; margin-bottom:2px;'>Best fix: {best_fix_name}</div>
-                    Saves {best_fix_pct:.0f}% &nbsp;·&nbsp; {best_fix_payback:.1f}yr payback
-                </div>
-            </div>
+<div style='border: 2px solid {border_col}; border-radius: 8px; background: {bg_col}; padding: 18px 16px; {shadow} height: 100%; transition: all 0.2s;'>
+<div style='font-family:Rajdhani,sans-serif; font-size:1.15rem; font-weight:700; color:#071A2F; margin-bottom:12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>
+{icon} {bname.replace("Greenfield ", "")}
+</div>
+<div style='display:flex; align-items:center; gap:10px; margin-bottom:14px;'>
+<div style='background:{b_epc["epc_colour"]}; color:white; font-size:1.4rem; font-weight:bold; font-family:Rajdhani,sans-serif; padding:2px 14px; border-radius:4px;'>
+{b_epc["epc_band"]}
+</div>
+<div style='height:8px; flex:1; background:linear-gradient(to right, #00873D 20%, #F0B429 50%, #C0392B 80%); border-radius:4px; opacity:0.4;'></div>
+</div>
+<div style='font-size:0.85rem; color:#3A576B; line-height:1.7; margin-bottom:14px;'>
+<strong style='color:#071A2F;'>{b_energy:,.0f}</strong> MWh/yr<br>
+<strong style='color:#071A2F;'>{b_carbon:,.1f}</strong> tonnes CO₂e<br>
+<strong style='color:#071A2F;'>£{b_cost/1000:,.0f}k</strong>/yr
+</div>
+<div style='background:#F0F4F8; padding:10px 12px; border-radius:6px; font-size:0.8rem; color:#071A2F; border-left: 3px solid #00C2A8;'>
+<div style='font-weight:700; color:#00C2A8; margin-bottom:2px;'>Best fix: {best_fix_name}</div>
+Saves {best_fix_pct:.0f}% &nbsp;·&nbsp; {best_fix_payback:.1f}yr payback
+</div>
+</div>
             """, unsafe_allow_html=True)
             
             if st.button(f"Select {bname.replace('Greenfield ', '')}", key=f"sel_{bname}", use_container_width=True, type="primary" if is_selected else "secondary"):
@@ -867,52 +749,52 @@ with _tab_dash:
             scen_name_short = best_scen.split(" (")[0]
             
             st.markdown(f"""
-            <div style='background: #ffffff; border: 1px solid #E0EBF4; border-top: 4px solid #00C2A8; border-radius: 8px; padding: 20px; box-shadow: 0 6px 16px rgba(7,26,47,0.08); margin-bottom: 24px;'>
-                <div style='display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:10px;'>
-                    <div>
-                        <h3 style='margin:0; font-family:Rajdhani,sans-serif; color:#071A2F; font-size:1.4rem;'>{icon} {selected_bname}</h3>
-                        <div style='color:#5A7A90; font-size:0.85rem; margin-top:4px;'>
-                            {bdata['building_type']} &nbsp;·&nbsp; {bdata['floor_area_m2']:,} m² &nbsp;·&nbsp; Built {bdata['built_year']}
-                        </div>
-                    </div>
-                    <div style='text-align:right; font-family:Rajdhani,sans-serif; font-weight:bold; font-size:1.1rem; color:#071A2F;'>
-                        <span style='color:{b_epc["epc_colour"]};'>{b_epc["epc_band"]}</span> 
-                        <span style='color:#A8C8D8; margin:0 6px;'>→</span> 
-                        <span style='color:{target_epc["epc_colour"]};'>{target_epc["epc_band"]} possible</span>
-                    </div>
-                </div>
-                <hr style='border-color:#E0EBF4; margin:16px 0;'/>
-                <div style='display:flex; flex-wrap:wrap; gap:20px;'>
-                    <div style='flex:1; min-width:250px; background:#F8FAFC; padding:16px; border-radius:6px; border:1px solid #E0EBF4;'>
-                        <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#5A7A90; margin-bottom:12px; font-weight:700;'>CURRENT (Baseline)</div>
-                        <div style='line-height:1.8; font-size:0.9rem; color:#071A2F;'>
-                            ⚡ <strong>{b_energy:,.0f}</strong> MWh/yr<br/>
-                            🌍 <strong>{b_carbon:,.1f}</strong> t CO₂e/yr<br/>
-                            💷 <strong>£{b_cost/1000:,.0f}k</strong>/yr
-                        </div>
-                    </div>
-                    <div style='flex:1; min-width:250px; background:rgba(29,184,122,0.05); padding:16px; border-radius:6px; border:1px solid rgba(29,184,122,0.3); border-left:3px solid #1DB87A;'>
-                        <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#1DB87A; margin-bottom:12px; font-weight:700;'>BEST SCENARIO ({scen_name_short})</div>
-                        <div style='line-height:1.8; font-size:0.9rem; color:#071A2F;'>
-                            ⚡ <strong>{best_res["scenario_energy_mwh"]:,.0f}</strong> MWh/yr 
-                               <span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>↓ {best_res["energy_saving_pct"]:.0f}%</span><br/>
-                            🌍 <strong>{best_res["scenario_carbon_t"]:,.1f}</strong> t CO₂e 
-                               <span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>↓ {best_res["carbon_saving_t"]:,.1f} t saved</span><br/>
-                            💷 <strong>£{best_res["scenario_energy_mwh"] * 1000 * 0.28 / 1000:,.0f}k</strong>/yr 
-                               <span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>saves £{best_res["annual_saving_gbp"]/1000:,.0f}k/yr</span><br/>
-                            🏗️ Install: <strong>£{best_res["install_cost_gbp"]/1000:,.0f}k</strong><br/>
-                            ⏱️ Payback: <strong>{best_res["payback_years"]:.1f} years</strong>
-                        </div>
-                    </div>
-                </div>
-                <div style='margin-top:16px; background:#F0F4F8; padding:12px 16px; border-radius:6px; font-size:0.9rem; color:#3A576B; display:flex; align-items:center; gap:12px;'>
-                    <span style='font-size:1.4rem;'>🚗</span>
-                    <div>
-                        <strong>Real-world impact:</strong> This carbon saving is equivalent to removing <strong>{cars_removed} cars</strong> from the road, 
-                        or planting <strong>{trees_planted:,} trees</strong>.
-                    </div>
-                </div>
-            </div>
+<div style='background: #ffffff; border: 1px solid #E0EBF4; border-top: 4px solid #00C2A8; border-radius: 8px; padding: 20px; box-shadow: 0 6px 16px rgba(7,26,47,0.08); margin-bottom: 24px;'>
+<div style='display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:10px;'>
+<div>
+<h3 style='margin:0; font-family:Rajdhani,sans-serif; color:#071A2F; font-size:1.4rem;'>{icon} {selected_bname}</h3>
+<div style='color:#5A7A90; font-size:0.85rem; margin-top:4px;'>
+{bdata['building_type']} &nbsp;·&nbsp; {bdata['floor_area_m2']:,} m² &nbsp;·&nbsp; Built {bdata['built_year']}
+</div>
+</div>
+<div style='text-align:right; font-family:Rajdhani,sans-serif; font-weight:bold; font-size:1.1rem; color:#071A2F;'>
+<span style='color:{b_epc["epc_colour"]};'>{b_epc["epc_band"]}</span> 
+<span style='color:#A8C8D8; margin:0 6px;'>→</span> 
+<span style='color:{target_epc["epc_colour"]};'>{target_epc["epc_band"]} possible</span>
+</div>
+</div>
+<hr style='border-color:#E0EBF4; margin:16px 0;'/>
+<div style='display:flex; flex-wrap:wrap; gap:20px;'>
+<div style='flex:1; min-width:250px; background:#F8FAFC; padding:16px; border-radius:6px; border:1px solid #E0EBF4;'>
+<div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#5A7A90; margin-bottom:12px; font-weight:700;'>CURRENT (Baseline)</div>
+<div style='line-height:1.8; font-size:0.9rem; color:#071A2F;'>
+⚡ <strong>{b_energy:,.0f}</strong> MWh/yr<br/>
+🌍 <strong>{b_carbon:,.1f}</strong> t CO₂e/yr<br/>
+💷 <strong>£{b_cost/1000:,.0f}k</strong>/yr
+</div>
+</div>
+<div style='flex:1; min-width:250px; background:rgba(29,184,122,0.05); padding:16px; border-radius:6px; border:1px solid rgba(29,184,122,0.3); border-left:3px solid #1DB87A;'>
+<div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#1DB87A; margin-bottom:12px; font-weight:700;'>BEST SCENARIO ({scen_name_short})</div>
+<div style='line-height:1.8; font-size:0.9rem; color:#071A2F;'>
+⚡ <strong>{best_res["scenario_energy_mwh"]:,.0f}</strong> MWh/yr 
+<span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>↓ {best_res["energy_saving_pct"]:.0f}%</span><br/>
+🌍 <strong>{best_res["scenario_carbon_t"]:,.1f}</strong> t CO₂e 
+<span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>↓ {best_res["carbon_saving_t"]:,.1f} t saved</span><br/>
+💷 <strong>£{best_res["scenario_energy_mwh"] * 1000 * 0.28 / 1000:,.0f}k</strong>/yr 
+<span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>saves £{best_res["annual_saving_gbp"]/1000:,.0f}k/yr</span><br/>
+🏗️ Install: <strong>£{best_res["install_cost_gbp"]/1000:,.0f}k</strong><br/>
+⏱️ Payback: <strong>{best_res["payback_years"]:.1f} years</strong>
+</div>
+</div>
+</div>
+<div style='margin-top:16px; background:#F0F4F8; padding:12px 16px; border-radius:6px; font-size:0.9rem; color:#3A576B; display:flex; align-items:center; gap:12px;'>
+<span style='font-size:1.4rem;'>🚗</span>
+<div>
+<strong>Real-world impact:</strong> This carbon saving is equivalent to removing <strong>{cars_removed} cars</strong> from the road, 
+or planting <strong>{trees_planted:,} trees</strong>.
+</div>
+</div>
+</div>
             """, unsafe_allow_html=True)
             
         else:
@@ -968,7 +850,7 @@ with _tab_dash:
                 map_data,
                 get_position="[lon, lat]",
                 get_fill_color="color",
-                get_radius=25,
+                get_radius=30,
                 pickable=True
             )
             text_layer = pdk.Layer(
@@ -1023,40 +905,36 @@ with _tab_dash:
         pct_remaining = (sc_carbon / campus_carbon) * 100 if campus_carbon else 100
         
         st.markdown(f"""
-        <div style='background:#ffffff; border:1px solid #E0EBF4; border-radius:8px; padding:20px; box-shadow:0 4px 12px rgba(7,26,47,0.05); margin-bottom:16px;'>
-            <h3 style='margin-top:0; color:#071A2F; font-family:Rajdhani,sans-serif;'>Campus Net Zero Pathway</h3>
-            <div style='margin-bottom:12px; font-size:0.9rem; color:#5A7A90;'>Carbon Budget Progress</div>
-            
-            <div style='margin-bottom:6px; display:flex; justify-content:space-between; font-weight:bold; color:#071A2F;'>
-                <span>Baseline: {campus_carbon:,.0f} t CO₂e</span>
-            </div>
-            <div style='background:#E0EBF4; width:100%; height:24px; border-radius:12px; overflow:hidden; margin-bottom:12px;'>
-                <div style='background:#E84C4C; width:100%; height:100%;'></div>
-            </div>
-            
-            <div style='margin-bottom:6px; display:flex; justify-content:space-between; font-weight:bold; color:#1DB87A;'>
-                <span>{target_sn.split(' (')[0]}: {sc_carbon:,.0f} t CO₂e</span>
-                <span>↓ You save {saved_carbon:,.0f} t CO₂e/yr</span>
-            </div>
-            <div style='background:#E0EBF4; width:100%; height:24px; border-radius:12px; overflow:hidden; margin-bottom:24px;'>
-                <div style='background:#1DB87A; width:{pct_remaining}%; height:100%;'></div>
-            </div>
-            
-            <div style='display:flex; flex-wrap:wrap; gap:16px; border-top:1px solid #E0EBF4; padding-top:16px;'>
-                <div style='flex:1; min-width:200px;'>
-                    <div style='color:#5A7A90; font-size:0.85rem;'>Energy Cost</div>
-                    <div style='font-size:1.1rem; font-weight:bold; color:#071A2F;'>£{campus_cost/1000:,.0f}k → £{sc_cost/1000:,.0f}k <span style='color:#1DB87A;'>(save £{saved_cost/1000:,.0f}k/yr)</span></div>
-                </div>
-                <div style='flex:1; min-width:200px;'>
-                    <div style='color:#5A7A90; font-size:0.85rem;'>Investment Required</div>
-                    <div style='font-size:1.1rem; font-weight:bold; color:#071A2F;'>£{sc_install/1000:,.0f}k <span style='color:#5A7A90; font-size:0.9rem; font-weight:normal;'>· {payback:.1f} yr payback</span></div>
-                </div>
-            </div>
-            
-            <div style='margin-top:16px; background:#F0F4F8; padding:12px 16px; border-radius:6px; font-size:0.9rem; color:#3A576B;'>
-                🌍 <strong>Real-world equivalent:</strong> Removing <strong>{cars:,} cars</strong> from the road every year, or avoiding <strong>{flights:,} transatlantic flights</strong>.
-            </div>
-        </div>
+<div style='background:#ffffff; border:1px solid #E0EBF4; border-radius:8px; padding:20px; box-shadow:0 4px 12px rgba(7,26,47,0.05); margin-bottom:16px;'>
+<h3 style='margin-top:0; color:#071A2F; font-family:Rajdhani,sans-serif;'>Campus Net Zero Pathway</h3>
+<div style='margin-bottom:12px; font-size:0.9rem; color:#5A7A90;'>Carbon Budget Progress</div>
+<div style='margin-bottom:6px; display:flex; justify-content:space-between; font-weight:bold; color:#071A2F;'>
+<span>Baseline: {campus_carbon:,.0f} t CO₂e</span>
+</div>
+<div style='background:#E0EBF4; width:100%; height:24px; border-radius:12px; overflow:hidden; margin-bottom:12px;'>
+<div style='background:#E84C4C; width:100%; height:100%;'></div>
+</div>
+<div style='margin-bottom:6px; display:flex; justify-content:space-between; font-weight:bold; color:#1DB87A;'>
+<span>{target_sn.split(' (')[0]}: {sc_carbon:,.0f} t CO₂e</span>
+<span>↓ You save {saved_carbon:,.0f} t CO₂e/yr</span>
+</div>
+<div style='background:#E0EBF4; width:100%; height:24px; border-radius:12px; overflow:hidden; margin-bottom:24px;'>
+<div style='background:#1DB87A; width:{pct_remaining}%; height:100%;'></div>
+</div>
+<div style='display:flex; flex-wrap:wrap; gap:16px; border-top:1px solid #E0EBF4; padding-top:16px;'>
+<div style='flex:1; min-width:200px;'>
+<div style='color:#5A7A90; font-size:0.85rem;'>Energy Cost</div>
+<div style='font-size:1.1rem; font-weight:bold; color:#071A2F;'>£{campus_cost/1000:,.0f}k → £{sc_cost/1000:,.0f}k <span style='color:#1DB87A;'>(save £{saved_cost/1000:,.0f}k/yr)</span></div>
+</div>
+<div style='flex:1; min-width:200px;'>
+<div style='color:#5A7A90; font-size:0.85rem;'>Investment Required</div>
+<div style='font-size:1.1rem; font-weight:bold; color:#071A2F;'>£{sc_install/1000:,.0f}k <span style='color:#5A7A90; font-size:0.9rem; font-weight:normal;'>· {payback:.1f} yr payback</span></div>
+</div>
+</div>
+<div style='margin-top:16px; background:#F0F4F8; padding:12px 16px; border-radius:6px; font-size:0.9rem; color:#3A576B;'>
+🌍 <strong>Real-world equivalent:</strong> Removing <strong>{cars:,} cars</strong> from the road every year, or avoiding <strong>{flights:,} transatlantic flights</strong>.
+</div>
+</div>
         """, unsafe_allow_html=True)
         
         # ── EXPORT BUSINESS CASE CSV (PHASE 6) ────────────────────────────────
