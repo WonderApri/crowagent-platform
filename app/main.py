@@ -200,6 +200,21 @@ header { background: transparent !important; }
 </style>
 """, unsafe_allow_html=True)
 
+
+def _card(label: str, value_html: str, subtext: str, accent_class: str = "") -> None:
+    """Render a compact KPI card block used across dashboard segments."""
+    accent = f" {accent_class}" if accent_class else ""
+    st.markdown(
+        f"""
+        <div class='kpi-card{accent}'>
+          <div class='kpi-label'>{label}</div>
+          <div class='kpi-value'>{value_html}</div>
+          <div class='kpi-sub'>{subtext}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILDING & SCENARIO DATA (Original templates + Custom JSON support)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -628,7 +643,7 @@ if not st.session_state.user_segment:
         <p style="color:#7A93A7;font-size:0.8rem; margin: 0 auto 28px auto; max-width: 920px; line-height:1.45;">
             Prototype notice: outputs are indicative and for decision support only. Always validate with certified assessors and qualified professionals
             before procurement, design sign-off, or regulatory submission. CrowAgent™ name, logo, and product marks are trademarks of their respective owners.
-            © 2026 CrowAgent™. All rights reserved.
+            © 2026 CrowAgent™. Rights reserved.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1293,6 +1308,7 @@ with _tab_dash:
         baseline_energy = baseline_result.get("baseline_energy_mwh",
                                               selected_building["baseline_energy_mwh"])
         baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
+        baseline_cost   = baseline_energy * 1000 * 0.28 / 1000
 
         k1, k2, k3, k4 = st.columns(4)
 
@@ -1808,7 +1824,9 @@ with _tab_ai:
 # TAB 4 — UK COMPLIANCE HUB
 # ════════════════════════════════════════════════════════════════════════════
 with _tab_compliance:
-    _seg   = st.session_state.user_segment
+    _seg = st.session_state.get("user_segment")
+    if _seg not in compliance.SEGMENT_META:
+        _seg = "university_he"
     _smeta = compliance.SEGMENT_META[_seg]
 
     # ── Header ────────────────────────────────────────────────────────────────
