@@ -197,6 +197,15 @@ h1,h2,h3,h4 {
 footer { visibility: hidden; }
 div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hidden; }
 header { background: transparent !important; }
+[data-testid="collapsedControl"] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: fixed !important;
+  top: 0.75rem !important;
+  left: 0.75rem !important;
+  z-index: 10000 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -435,16 +444,13 @@ def add_to_portfolio(postcode: str) -> None:
         st.error(f"Portfolio capacity reached (Max {MAX_PORTFOLIO_SIZE} buildings).")
         return
         
+    # fetch_epc_data reads API URL/key from env/secrets and only accepts postcode
     try:
-        epc_data = fetch_epc_data(
-            postcode,
-            api_url=st.session_state.get("epc_api_url", "https://epc.opendatacommunities.org/api/v1"),
-            api_key=st.session_state.get("epc_api_key", ""),
-        )
+        epc_data = fetch_epc_data(postcode)
         entry = init_portfolio_entry(postcode, st.session_state.user_segment, epc_data)
         st.session_state.portfolio.append(entry)
         st.success(f"Added {postcode} to portfolio.")
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         st.error(str(e))
 
 def remove_from_portfolio(entry_id: str) -> None:
@@ -745,8 +751,6 @@ with st.sidebar:
         key="selected_scenario_names",
         help="Choose one or more intervention scenarios for calculations.",
     )
-    if not _chosen:
-        st.session_state.selected_scenario_names = _segment_default_scenarios(st.session_state.user_segment)
     _update_location_query_params()
 
     st.markdown("---")
@@ -1164,8 +1168,14 @@ Gemini API key (for AI Advisor): get one at
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPUTE ALL SELECTED SCENARIOS
 # ─────────────────────────────────────────────────────────────────────────────
-_active_buildings = dict(BUILDINGS)
-_active_buildings.update(compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {}))
+if st.session_state.user_segment == "university_he":
+    _active_buildings = dict(BUILDINGS)
+else:
+    _active_buildings = dict(compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {}))
+
+if not _active_buildings:
+    # Defensive fallback: keep app usable if segment metadata is misconfigured.
+    _active_buildings = dict(BUILDINGS)
 
 if "selected_building_name" not in st.session_state or \
    st.session_state.selected_building_name not in _active_buildings:
@@ -1180,18 +1190,19 @@ if selected_building is None:
 _valid_scenario_names = list(SCENARIOS.keys())
 _default_scenarios = _segment_default_scenarios(st.session_state.user_segment)
 
-if "scenario_selection" not in st.session_state:
-    st.session_state.scenario_selection = [
+if "selected_scenario_names" not in st.session_state:
+    st.session_state.selected_scenario_names = [
         s for s in _default_scenarios if s in SCENARIOS
     ] or _valid_scenario_names[:1]
 
 selected_scenario_names = [
-    s for s in st.session_state.scenario_selection if s in SCENARIOS
+    s for s in st.session_state.selected_scenario_names if s in SCENARIOS
 ]
 if not selected_scenario_names:
     selected_scenario_names = [
         s for s in _default_scenarios if s in SCENARIOS
     ] or _valid_scenario_names[:1]
+    st.session_state.selected_scenario_names = selected_scenario_names
 
 results: dict[str, dict] = {}
 _compute_errors: list[str] = []
@@ -1327,7 +1338,7 @@ with _tab_dash:
             with k3:
                 _card("Target EPC Band", "C", f"Target SAP: {mees['target_sap']:.0f}", "accent-teal")
             with k4:
-                _card("Est. Upgrade Cost", f"£{mees['estimated_cost_low']:,.0f}–£{mees['estimated_cost_high']:,.0f}", "Indicative MEES package", "accent-green")
+                _card("Est. Upgrade Cost", f"£{mees['total_cost_low']:,.0f}–£{mees['total_cost_high']:,.0f}", "Indicative MEES package", "accent-green")
 
         elif seg == "smb_industrial":
             secr = compliance.calculate_carbon_baseline(
@@ -1445,6 +1456,19 @@ with _tab_dash:
     st.dataframe(pd.DataFrame(rows_tbl), use_container_width=True, hide_index=True)
     st.caption("U-values: CIBSE Guide A · Scenario factors: BSRIA / Green Roof Organisation UK · "
                "⚠️ Indicative only — see prototype disclaimer above")
+    _dash_report = {
+        "segment": st.session_state.user_segment,
+        "building": selected_building_name,
+        "scenarios": selected_scenario_names,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "results": results,
+    }
+    st.download_button(
+        "📥 Download Dashboard Report (JSON)",
+        data=json.dumps(_dash_report, indent=2, default=str),
+        file_name="dashboard_report.json",
+        mime="application/json",
+    )
 
     # ── Building Specification Expander ───────────────────────────────────────
     with st.expander(f"📐 Building Specification — {selected_building_name}"):
@@ -1602,6 +1626,19 @@ with _tab_fin:
             })
         st.dataframe(pd.DataFrame(inv_rows), use_container_width=True, hide_index=True)
         st.caption("⚠️ 5-yr net saving = (annual saving × 5) − install cost · Undiscounted · Indicative only")
+        _fin_report = {
+            "segment": st.session_state.user_segment,
+            "building": selected_building_name,
+            "scenarios": list(paid_scenarios.keys()),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "financial_rows": inv_rows,
+        }
+        st.download_button(
+            "📥 Download Financial Analysis Report (JSON)",
+            data=json.dumps(_fin_report, indent=2, default=str),
+            file_name="financial_analysis_report.json",
+            mime="application/json",
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -2821,17 +2858,5 @@ with _tab_about:
           </div>
         </div>
         """, unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DOWNLOAD FACILITY
-# ─────────────────────────────────────────────────────────────────────────────
-full_code = """# [FULL CODE CONTENT AS RENDERED ABOVE]"""
-st.sidebar.download_button(
-    label="💾 Download Generated main.py",
-    data=full_code,
-    file_name="main.py",
-    mime="text/x-python",
-    use_container_width=True
-)
 
 st.markdown("<div class='ent-footer'>© 2026 Aparajita Parihar · CrowAgent™</div>", unsafe_allow_html=True)            
