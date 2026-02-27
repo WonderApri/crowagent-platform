@@ -67,33 +67,39 @@ class TestEpcStubFlag:
 class TestEpcStubData:
     def test_stub_has_required_keys(self, monkeypatch):
         monkeypatch.delenv("EPC_API_URL", raising=False)
+        monkeypatch.delenv("EPC_API_KEY", raising=False)
         result = fetch_epc_data("SW1A 1AA")
         for key in ("floor_area_m2", "built_year", "epc_band", "_is_stub"):
             assert key in result, f"Missing key: {key}"
 
     def test_stub_floor_area_is_positive(self, monkeypatch):
         monkeypatch.delenv("EPC_API_URL", raising=False)
+        monkeypatch.delenv("EPC_API_KEY", raising=False)
         result = fetch_epc_data("M1 1AA")
         assert result["floor_area_m2"] > 0
 
     def test_stub_epc_band_is_string(self, monkeypatch):
         monkeypatch.delenv("EPC_API_URL", raising=False)
+        monkeypatch.delenv("EPC_API_KEY", raising=False)
         result = fetch_epc_data("E1 6RF")
         assert isinstance(result["epc_band"], str)
         assert result["epc_band"] in ("A", "B", "C", "D", "E", "F", "G")
 
     def test_invalid_postcode_raises(self, monkeypatch):
         monkeypatch.delenv("EPC_API_URL", raising=False)
+        monkeypatch.delenv("EPC_API_KEY", raising=False)
         with pytest.raises(ValueError):
             fetch_epc_data("X")
 
     def test_short_postcode_raises(self, monkeypatch):
         monkeypatch.delenv("EPC_API_URL", raising=False)
+        monkeypatch.delenv("EPC_API_KEY", raising=False)
         with pytest.raises(ValueError):
             fetch_epc_data("AB1")
 
     def test_valid_postcode_formats_accepted(self, monkeypatch):
         monkeypatch.delenv("EPC_API_URL", raising=False)
+        monkeypatch.delenv("EPC_API_KEY", raising=False)
         # Various UK postcode formats
         for pc in ("SW1A 2AA", "EC1A 1BB", "W1A 0AX", "M1 1AE", "B1 1BB"):
             result = fetch_epc_data(pc)
@@ -101,5 +107,6 @@ class TestEpcStubData:
 
     def test_returns_dict(self, monkeypatch):
         monkeypatch.delenv("EPC_API_URL", raising=False)
+        monkeypatch.delenv("EPC_API_KEY", raising=False)
         result = fetch_epc_data("LS1 1BA")
         assert isinstance(result, dict)
