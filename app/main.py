@@ -406,6 +406,21 @@ def _segment_default_scenarios(segment: str | None) -> list[str]:
 MAX_PORTFOLIO_SIZE = 10
 MAX_ACTIVE_ANALYSIS_BUILDINGS = 3
 
+def _extract_uk_postcode(text: str) -> str:
+    """Extract a likely UK postcode token from free-form address text."""
+    raw = " ".join((text or "").upper().split())
+    if not raw:
+        return ""
+    parts = [p.strip(",") for p in raw.split()]
+    for i in range(len(parts) - 1):
+        cand = f"{parts[i]} {parts[i+1]}"
+        if 5 <= len(cand) <= 8 and any(ch.isdigit() for ch in cand):
+            return cand
+    for token in parts:
+        if 5 <= len(token) <= 8 and any(ch.isdigit() for ch in token):
+            return token
+    return ""
+
 def init_portfolio_entry(postcode: str, segment: str, epc_data: dict, lat: float | None = None, lon: float | None = None) -> dict:
     """
     Initialize a new portfolio entry conforming to the strict JSON schema.
@@ -534,7 +549,14 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
     if not valid:
         raise ValueError(f"Physics model validation: {msg}")
 
-    return physics.calculate_thermal_load(building, scenario, weather_data)
+    tariff = float(st.session_state.get("energy_tariff_gbp_per_kwh", physics.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH))
+    return physics.calculate_thermal_load(
+        building,
+        scenario,
+        weather_data,
+        tariff_gbp_per_kwh=tariff,
+        carbon_intensity_kg_per_kwh=physics.GRID_CARBON_INTENSITY_KG_PER_KWH,
+    )
 
 
 
@@ -682,6 +704,8 @@ if "epc_api_key" not in st.session_state:
     st.session_state.epc_api_key = _get_secret("EPC_API_KEY", "")
 if "epc_api_url" not in st.session_state:
     st.session_state.epc_api_url = _get_secret("EPC_API_URL", "https://epc.opendatacommunities.org/api/v1")
+if "energy_tariff_gbp_per_kwh" not in st.session_state:
+    st.session_state.energy_tariff_gbp_per_kwh = physics.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ONBOARDING GATE (App Locked Until Segment Selected)
@@ -776,6 +800,19 @@ with st.sidebar:
 
     st.markdown("---")
 
+    with st.expander("⚙️ Advanced Settings", expanded=False):
+        st.caption("Financial assumptions are indicative; edit tariff to reflect your contract rates.")
+        st.session_state.energy_tariff_gbp_per_kwh = st.number_input(
+            "Electricity tariff (£/kWh)",
+            min_value=0.05,
+            max_value=1.50,
+            step=0.01,
+            value=float(st.session_state.energy_tariff_gbp_per_kwh),
+            help="Used for annual savings and payback across Dashboard and Financial Analysis.",
+        )
+
+    st.markdown("---")
+
     # ── Active Segment ────────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>👤 Active Segment</div>", unsafe_allow_html=True)
     _seg_meta = compliance.SEGMENT_META.get(st.session_state.user_segment, {})
@@ -813,33 +850,65 @@ with st.sidebar:
 
     # ── Portfolio Manager ─────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>🏢 Asset Portfolio</div>", unsafe_allow_html=True)
-    st.markdown(f"<div style='font-size:0.75rem; color:#8FBCCE;'>{len(st.session_state.portfolio)} / {MAX_PORTFOLIO_SIZE} Saved · Max {MAX_ACTIVE_ANALYSIS_BUILDINGS} for analysis</div>", unsafe_allow_html=True)
+    _seg_portfolio = _segment_portfolio()
+    st.markdown(
+        f"<div style='font-size:0.75rem; color:#8FBCCE;'>{len(_seg_portfolio)} / {MAX_PORTFOLIO_SIZE} Saved · Select 1 to {MAX_ACTIVE_ANALYSIS_BUILDINGS} for analysis</div>",
+        unsafe_allow_html=True,
+    )
 
-    _addr_query = st.text_input("Find UK address or postcode", placeholder="Type at least 3 characters")
-    _addr_options = search_addresses(_addr_query) if len(_addr_query.strip()) >= 3 else []
-    _addr_labels = ["Select a property…"] + [o["label"] for o in _addr_options]
-    _addr_pick = st.selectbox("Address picker", options=_addr_labels, key="address_picker", label_visibility="collapsed")
+    _addr_query = st.text_input(
+        "Find UK address or postcode",
+        key="asset_lookup_query",
+        placeholder="e.g. RG1 6SP or 10 Downing Street",
+    )
+    if len(_addr_query.strip()) >= 3:
+        st.session_state["asset_lookup_results"] = search_addresses(_addr_query, limit=12)
+    else:
+        st.session_state["asset_lookup_results"] = []
+
+    _addr_options = st.session_state.get("asset_lookup_results", [])
+    _addr_labels = [o["label"] for o in _addr_options]
+    _addr_pick = st.selectbox(
+        "Address picker",
+        options=[""] + _addr_labels,
+        format_func=lambda v: "Select a property…" if not v else v,
+        key="address_picker_selection",
+        label_visibility="collapsed",
+    )
+
     if st.button("➕ Add Selected Asset", use_container_width=True):
-        if _addr_pick == "Select a property…":
+        chosen = next((o for o in _addr_options if o["label"] == _addr_pick), None)
+        if not chosen:
             st.warning("Choose an address from the picker first.")
         else:
-            chosen = next((o for o in _addr_options if o["label"] == _addr_pick), None)
-            postcode = (chosen or {}).get("postcode") or _addr_pick.split(",")[-2].strip().upper()
-            if postcode:
-                add_to_portfolio(postcode, lat=chosen.get("lat") if chosen else None, lon=chosen.get("lon") if chosen else None)
+            postcode = (chosen.get("postcode") or _extract_uk_postcode(chosen.get("label", ""))).upper().strip()
+            if not postcode:
+                st.error("Selected address has no usable UK postcode. Please choose another result.")
+            elif any(p.get("postcode") == postcode and p.get("segment") == st.session_state.user_segment for p in st.session_state.portfolio):
+                st.info(f"{postcode} is already in this segment portfolio.")
+            else:
+                add_to_portfolio(postcode, lat=chosen.get("lat"), lon=chosen.get("lon"))
+                st.session_state.address_picker_selection = ""
                 st.rerun()
 
-    _seg_portfolio = _segment_portfolio()
     if _seg_portfolio:
-        default_ids = [p["id"] for p in _seg_portfolio[:MAX_ACTIVE_ANALYSIS_BUILDINGS]]
-        st.session_state.active_analysis_ids = st.multiselect(
+        _seg_ids = [p["id"] for p in _seg_portfolio]
+        _default_ids = _seg_ids[:MAX_ACTIVE_ANALYSIS_BUILDINGS]
+        _existing = [i for i in st.session_state.get("active_analysis_ids", []) if i in _seg_ids]
+        _active_default = _existing or _default_ids
+
+        _chosen_assets = st.multiselect(
             "Active analysis buildings (1–3)",
-            options=[p["id"] for p in _seg_portfolio],
-            default=[i for i in st.session_state.get("active_analysis_ids", default_ids) if i in {p["id"] for p in _seg_portfolio}] or default_ids,
+            options=_seg_ids,
+            default=_active_default,
             max_selections=MAX_ACTIVE_ANALYSIS_BUILDINGS,
             format_func=lambda _id: next((f"{p['postcode']} (EPC {p['epc_band']})" for p in _seg_portfolio if p["id"] == _id), _id),
             key="active_analysis_ids",
         )
+        if not _chosen_assets:
+            st.session_state.active_analysis_ids = [_default_ids[0]]
+            st.warning("At least one active building is required for analysis. Auto-selected first asset.")
+
         for p_item in _seg_portfolio:
             col_id, col_btn = st.columns([4, 1])
             with col_id:
@@ -849,7 +918,7 @@ with st.sidebar:
                     remove_from_portfolio(p_item['id'])
                     st.rerun()
     else:
-        st.markdown("<div style='font-size:0.8rem; color:#5A7A90; font-style: italic;'>No assets for this segment yet. Use address picker above.</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.8rem; color:#5A7A90; font-style: italic;'>No assets for this segment yet. Add at least one UK address to begin analysis.</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 # ── Location picker ────────────────────────────────────────────────────────
@@ -1238,6 +1307,8 @@ if not _active_buildings:
         _active_buildings = dict(BUILDINGS)
     else:
         _active_buildings = dict(compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {}))
+        if _active_buildings:
+            st.info("No portfolio assets selected yet — showing segment example asset data. Add your address to replace this preview.")
 
 if not _active_buildings:
     _active_buildings = dict(BUILDINGS)
@@ -1384,7 +1455,8 @@ with _tab_dash:
         baseline_energy = baseline_result.get("baseline_energy_mwh",
                                               selected_building["baseline_energy_mwh"])
         baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
-        baseline_cost   = baseline_energy * 1000 * 0.28 / 1000
+        tariff = float(st.session_state.energy_tariff_gbp_per_kwh)
+        baseline_cost   = baseline_energy * 1000 * tariff / 1000
 
         k1, k2, k3, k4 = st.columns(4)
 
@@ -1453,7 +1525,7 @@ with _tab_dash:
             with k3:
                 _card("Best Reduction (t)", f"{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span>", best_carbon_name.split('(')[0].strip(), "accent-teal")
             with k4:
-                _card("Baseline Cost", f"£{baseline_cost:,.0f}<span class='kpi-unit'>k</span>", "At £0.28/kWh", "accent-gold")
+                _card("Baseline Cost", f"£{baseline_cost:,.0f}<span class='kpi-unit'>k</span>", f"At £{tariff:.2f}/kWh", "accent-gold")
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
     # ── Charts Row 1: Energy + Carbon ─────────────────────────────────────────
@@ -1612,7 +1684,7 @@ with _tab_fin:
             fig_s.update_layout(**CHART_LAYOUT, yaxis_title="£ per year")
             st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False})
             st.markdown(
-                "<div class='chart-caption'>Electricity at £0.28/kWh · HESA 2022-23 · "
+                f"<div class='chart-caption'>Electricity at £{tariff:.2f}/kWh · User-configurable tariff · "
                 "Assumes constant energy price</div>",
                 unsafe_allow_html=True,
             )
@@ -2634,7 +2706,8 @@ with _tab_dash:
                 intensity = (total_baseline_carbon * 1000) / avg_floor_area if avg_floor_area > 0 else 0
                 st.markdown(f"<div class='kpi-card accent-green'><div class='kpi-label'>Carbon Intensity</div><div class='kpi-value'>{intensity:,.1f}<span class='kpi-unit'> kgCO₂e/m²</span></div></div>", unsafe_allow_html=True)
             with k3:
-                st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Cost Exposure</div><div class='kpi-value'>£{total_baseline_mwh * 1000 * 0.28 / 1000:,.1f}<span class='kpi-unit'>k</span></div></div>", unsafe_allow_html=True)
+                _portfolio_tariff = float(st.session_state.energy_tariff_gbp_per_kwh)
+                st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Cost Exposure</div><div class='kpi-value'>£{total_baseline_mwh * 1000 * _portfolio_tariff / 1000:,.1f}<span class='kpi-unit'>k</span></div></div>", unsafe_allow_html=True)
             with k4:
                 st.markdown(f"<div class='kpi-card accent-navy'><div class='kpi-label'>Net Zero Gap</div><div class='kpi-value'>{total_baseline_carbon:,.1f}<span class='kpi-unit'> tCO₂e</span></div></div>", unsafe_allow_html=True)
 
@@ -2706,56 +2779,34 @@ with _tab_dash:
             st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # ── 3D/4D Spatial View & Geo-Physics Mapping (FIXED LAYOUT) ───────────
+        # ── Simplified Property Map (Google-style) ────────────────────────────
         st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
         st.markdown("<div class='sec-hdr'>🗺️ Property Map</div>", unsafe_allow_html=True)
-        
-        map_search_col, map_view_col = st.columns([1, 3])
-        
-        with map_search_col:
-            st.markdown("<div style='font-size:0.85rem; font-weight:600; color:#071A2F;'>Property Map</div>", unsafe_allow_html=True)
-            st.caption("Pins are based on selected portfolio postcodes.")
-            if st.session_state.user_segment == "university_he":
-                _advanced_3d = st.toggle("Advanced 3D view", value=False)
-            else:
-                _advanced_3d = False
+        st.caption("Simple location view for selected analysis assets.")
 
-        with map_view_col:
-            _map_data = []
-            center_lat = float(_segment_assets[0].get("lat", st.session_state.wx_lat) or st.session_state.wx_lat)
-            center_lon = float(_segment_assets[0].get("lon", st.session_state.wx_lon) or st.session_state.wx_lon)
+        _map_points = []
+        center_lat = float(_segment_assets[0].get("lat", st.session_state.wx_lat) or st.session_state.wx_lat)
+        center_lon = float(_segment_assets[0].get("lon", st.session_state.wx_lon) or st.session_state.wx_lon)
 
-            for i, p in enumerate(_segment_assets):
-                asset_lat = float(p.get("lat") or (center_lat + (np.sin(i) * 0.01)))
-                asset_lon = float(p.get("lon") or (center_lon + (np.cos(i) * 0.01)))
-                reduction = p["combined_results"]["energy_saving_pct"]
-                ratio = max(0.0, min(1.0, reduction / 100.0))
-                r = int(220 - ratio * 220)
-                g = int(50 + ratio * (194 - 50))
-                b = int(50 + ratio * (168 - 50))
-                
-                _map_data.append({
-                    "name": p["postcode"], "lat": asset_lat, "lon": asset_lon,
-                    "energy_saving_pct": reduction, "carbon_saving_t": p["combined_results"]["carbon_saving_t"],
-                    "fill_color": [r, g, b, 210], "elevation": max(10.0, p["baseline_results"]["scenario_energy_mwh"] / 10.0),
-                    "polygon": loc._synthetic_polygon(asset_lat, asset_lon, size_m=60.0)
-                })
+        for i, p in enumerate(_segment_assets):
+            asset_lat = float(p.get("lat") or (center_lat + (np.sin(i) * 0.005)))
+            asset_lon = float(p.get("lon") or (center_lon + (np.cos(i) * 0.005)))
+            _map_points.append({
+                "Asset": p["postcode"],
+                "lat": asset_lat,
+                "lon": asset_lon,
+                "Energy saving %": p["combined_results"].get("energy_saving_pct", 0),
+                "Carbon saving (t)": p["combined_results"].get("carbon_saving_t", 0),
+            })
 
-            if _map_data:
-                _map_df = pd.DataFrame(_map_data)[["lat", "lon"]]
-                st.map(_map_df, use_container_width=True)
-                if _advanced_3d:
-                    try:
-                        import pydeck as pdk
-                        deck = pdk.Deck(
-                            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-                            initial_view_state=pdk.ViewState(latitude=center_lat, longitude=center_lon, zoom=12, pitch=45),
-                            layers=[pdk.Layer("PolygonLayer", data=pd.DataFrame(_map_data), get_polygon="polygon", get_elevation="elevation", get_fill_color="fill_color", extruded=True, pickable=True, auto_highlight=True)],
-                            tooltip={"html": "<div style='font-family:Nunito Sans;'><b>{name}</b><br/>Reduction: {energy_saving_pct}%<br/>Carbon Saved: {carbon_saving_t} t</div>"}
-                        )
-                        st.pydeck_chart(deck, use_container_width=True)
-                    except Exception as e:
-                        st.warning(f"Advanced 3D view unavailable: {e}")
+        if _map_points:
+            _map_df = pd.DataFrame(_map_points)
+            st.map(_map_df[["lat", "lon"]], use_container_width=True)
+            st.dataframe(
+                _map_df[["Asset", "Energy saving %", "Carbon saving (t)"]],
+                use_container_width=True,
+                hide_index=True,
+            )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 — FINANCIAL ANALYSIS
