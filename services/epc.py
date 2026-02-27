@@ -19,6 +19,7 @@ from requests import Response
 EPC_API_URL_ENV = "EPC_API_URL"
 EPC_API_KEY_ENV = "EPC_API_KEY"
 EPC_USERNAME = "crowagent.platform@gmail.com"
+EPC_STRICT_NO_RECORDS_ENV = "EPC_STRICT_NO_RECORDS"
 VALID_EPC_BANDS = {"A", "B", "C", "D", "E", "F", "G"}
 
 
@@ -127,7 +128,11 @@ def fetch_epc_data(postcode: str, timeout_s: int = 10) -> dict[str, Any]:
 
     if had_transport_error:
         return _stub("EPC API request failed; using deterministic estimate.")
-    raise ValueError(f"No EPC records found for postcode: {postcode}")
+
+    strict_no_records = os.getenv(EPC_STRICT_NO_RECORDS_ENV, "").strip().lower() in {"1", "true", "yes"}
+    if strict_no_records:
+        raise ValueError(f"No EPC records found for postcode: {postcode}")
+    return _stub(f"No EPC records found for postcode: {postcode}; using deterministic estimate.")
 
 
 def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dict[str, Any]]:
