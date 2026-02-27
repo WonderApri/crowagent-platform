@@ -15,6 +15,25 @@ from __future__ import annotations
 import math
 import streamlit.components.v1 as components
 
+
+def _synthetic_polygon(lat: float, lon: float, size_m: float = 38.0) -> list[list[float]]:
+    """Build a simple square polygon around a coordinate.
+
+    Used by spatial visualizations when no real building footprint polygon is
+    available. Returns a closed ring in [lon, lat] order for map layers.
+    """
+    meters_per_deg_lat = 111_320.0
+    meters_per_deg_lon = 111_320.0 * max(0.2, math.cos(math.radians(lat)))
+    dlat = size_m / meters_per_deg_lat
+    dlon = size_m / meters_per_deg_lon
+    return [
+        [lon - dlon, lat - dlat],
+        [lon + dlon, lat - dlat],
+        [lon + dlon, lat + dlat],
+        [lon - dlon, lat + dlat],
+        [lon - dlon, lat - dlat],
+    ]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CITY DATABASE
 # ~60 cities; UK-weighted for Net Zero / Part L use cases.

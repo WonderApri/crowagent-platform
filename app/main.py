@@ -45,7 +45,7 @@ if ROOT_DIR not in sys.path:
 import services.weather as wx
 import services.location as loc
 import services.audit as audit
-from services.epc import fetch_epc_data
+from services.epc import fetch_epc_data, search_addresses
 import core.agent as crow_agent
 import core.physics as physics
 from app.visualization_3d import render_campus_3d_map
@@ -356,37 +356,57 @@ SCENARIOS: dict[str, dict] = {
     },
 }
 
-SEGMENT_DEFAULT_SCENARIOS: dict[str, list[str]] = {
+SEGMENT_SCENARIOS: dict[str, list[str]] = {
     "university_he": [
         "Baseline (No Intervention)",
+        "Solar Glass Installation",
+        "Green Roof Installation",
+        "Enhanced Insulation Upgrade",
         "Combined Package (All Interventions)",
     ],
     "smb_landlord": [
         "Baseline (No Intervention)",
         "Enhanced Insulation Upgrade",
+        "Combined Package (All Interventions)",
     ],
     "smb_industrial": [
         "Baseline (No Intervention)",
         "Solar Glass Installation",
+        "Enhanced Insulation Upgrade",
+        "Combined Package (All Interventions)",
     ],
     "individual_selfbuild": [
         "Baseline (No Intervention)",
-        "Green Roof Installation",
+        "Enhanced Insulation Upgrade",
+        "Combined Package (All Interventions)",
     ],
 }
+
+SEGMENT_DEFAULT_SCENARIOS: dict[str, list[str]] = {
+    "university_he": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
+    "smb_landlord": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
+    "smb_industrial": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
+    "individual_selfbuild": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
+}
+
+
+def _segment_scenario_options(segment: str | None) -> list[str]:
+    options = SEGMENT_SCENARIOS.get(segment or "", list(SCENARIOS.keys()))
+    return [name for name in options if name in SCENARIOS]
 
 
 def _segment_default_scenarios(segment: str | None) -> list[str]:
     defaults = SEGMENT_DEFAULT_SCENARIOS.get(segment or "", ["Baseline (No Intervention)"])
-    selected = [name for name in defaults if name in SCENARIOS]
+    selected = [name for name in defaults if name in _segment_scenario_options(segment)]
     return selected or ["Baseline (No Intervention)"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PORTFOLIO ARRAY LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
 MAX_PORTFOLIO_SIZE = 10
+MAX_ACTIVE_ANALYSIS_BUILDINGS = 3
 
-def init_portfolio_entry(postcode: str, segment: str, epc_data: dict) -> dict:
+def init_portfolio_entry(postcode: str, segment: str, epc_data: dict, lat: float | None = None, lon: float | None = None) -> dict:
     """
     Initialize a new portfolio entry conforming to the strict JSON schema.
 
@@ -410,6 +430,8 @@ def init_portfolio_entry(postcode: str, segment: str, epc_data: dict) -> dict:
         "floor_area_m2": floor_area,
         "built_year": int(epc_data.get("built_year", 1990)),
         "epc_band": str(epc_data.get("epc_band", "Unknown")),
+        "lat": lat,
+        "lon": lon,
         "physics_model_input": {
             "floor_area_m2": floor_area,
             "height_m": 3.0,
@@ -431,7 +453,7 @@ def init_portfolio_entry(postcode: str, segment: str, epc_data: dict) -> dict:
         "combined_results": {}
     }
 
-def add_to_portfolio(postcode: str) -> None:
+def add_to_portfolio(postcode: str, lat: float | None = None, lon: float | None = None) -> None:
     """
     Fetch EPC data and add to the persistent portfolio array.
     Enforces maximum portfolio size limit.
@@ -452,13 +474,11 @@ def add_to_portfolio(postcode: str) -> None:
     # fetch_epc_data reads API URL/key from env/secrets and only accepts postcode
     try:
         epc_data = fetch_epc_data(postcode)
-        entry = init_portfolio_entry(postcode, st.session_state.user_segment, epc_data)
+        entry = init_portfolio_entry(postcode, st.session_state.user_segment, epc_data, lat=lat, lon=lon)
         st.session_state.portfolio.append(entry)
         if epc_data.get("_is_stub", True):
-            st.warning(
-                f"Added {postcode} to portfolio using estimated data "
-                "(EPC API unavailable — configure an EPC API key in Settings for real data)."
-            )
+            st.toast(f"Estimated EPC data used for {postcode}.", icon="⚠️")
+            st.warning(epc_data.get("_stub_reason", "EPC API unavailable — using estimated data."))
         else:
             st.success(f"Added {postcode} to portfolio.")
     except (ValueError, TypeError) as e:
@@ -468,6 +488,33 @@ def remove_from_portfolio(entry_id: str) -> None:
     """Remove a building from the portfolio by ID."""
     if "portfolio" in st.session_state:
         st.session_state.portfolio = [b for b in st.session_state.portfolio if b["id"] != entry_id]
+
+
+def _segment_portfolio() -> list[dict]:
+    seg = st.session_state.get("user_segment")
+    portfolio = st.session_state.get("portfolio", [])
+    return [p for p in portfolio if p.get("segment") == seg]
+
+
+def _active_portfolio_entries() -> list[dict]:
+    seg_assets = _segment_portfolio()
+    selected_ids = st.session_state.get("active_analysis_ids", [])
+    active = [p for p in seg_assets if p.get("id") in selected_ids]
+    if active:
+        return active[:MAX_ACTIVE_ANALYSIS_BUILDINGS]
+    return seg_assets[:MAX_ACTIVE_ANALYSIS_BUILDINGS]
+
+
+def _portfolio_buildings_map() -> dict[str, dict]:
+    return {
+        p["postcode"]: {
+            **p.get("physics_model_input", {}),
+            "description": f"Portfolio asset at {p['postcode']} (EPC {p.get('epc_band', 'Unknown')})",
+            "segment": p.get("segment"),
+        }
+        for p in _active_portfolio_entries()
+        if isinstance(p.get("physics_model_input"), dict)
+    }
 # ─────────────────────────────────────────────────────────────────────────────
 # PHYSICS ENGINE — PINN Thermal Model
 # Q_transmission = U × A × ΔT × hours  [Wh]
@@ -520,7 +567,8 @@ def _hydrate_portfolio_results(portfolio: list[dict], weather_data: dict) -> tup
     errors: list[str] = []
 
     baseline_key = "Baseline (No Intervention)"
-    combined_key = "Combined Package (All Interventions)"
+    selected_names = [n for n in st.session_state.get("selected_scenario_names", []) if n in SCENARIOS and n != baseline_key]
+    combined_key = selected_names[0] if selected_names else "Combined Package (All Interventions)"
 
     for idx, entry in enumerate(portfolio):
         try:
@@ -745,7 +793,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<div class='sb-section'>🧪 Scenarios</div>", unsafe_allow_html=True)
-    _scenario_options = list(SCENARIOS.keys())
+    _scenario_options = _segment_scenario_options(st.session_state.user_segment)
     _scenario_defaults = [
         s for s in st.session_state.get("selected_scenario_names", _segment_default_scenarios(st.session_state.user_segment))
         if s in SCENARIOS
@@ -757,23 +805,42 @@ with st.sidebar:
         key="selected_scenario_names",
         help="Choose one or more intervention scenarios for calculations.",
     )
+    if not _chosen:
+        st.session_state.selected_scenario_names = _segment_default_scenarios(st.session_state.user_segment)
     _update_location_query_params()
 
     st.markdown("---")
 
     # ── Portfolio Manager ─────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>🏢 Asset Portfolio</div>", unsafe_allow_html=True)
-    st.markdown(f"<div style='font-size:0.75rem; color:#8FBCCE;'>{len(st.session_state.portfolio)} / {MAX_PORTFOLIO_SIZE} Assets Loaded</div>", unsafe_allow_html=True)
-    
-    with st.form(key="add_portfolio_form", clear_on_submit=True):
-        new_postcode = st.text_input("Add UK Postcode", placeholder="e.g. SW1A 1AA")
-        submit_add = st.form_submit_button("➕ Add Asset", use_container_width=True)
-        if submit_add and new_postcode:
-            add_to_portfolio(new_postcode)
-            st.rerun()
+    st.markdown(f"<div style='font-size:0.75rem; color:#8FBCCE;'>{len(st.session_state.portfolio)} / {MAX_PORTFOLIO_SIZE} Saved · Max {MAX_ACTIVE_ANALYSIS_BUILDINGS} for analysis</div>", unsafe_allow_html=True)
 
-    if st.session_state.portfolio:
-        for p_item in st.session_state.portfolio:
+    _addr_query = st.text_input("Find UK address or postcode", placeholder="Type at least 3 characters")
+    _addr_options = search_addresses(_addr_query) if len(_addr_query.strip()) >= 3 else []
+    _addr_labels = ["Select a property…"] + [o["label"] for o in _addr_options]
+    _addr_pick = st.selectbox("Address picker", options=_addr_labels, key="address_picker", label_visibility="collapsed")
+    if st.button("➕ Add Selected Asset", use_container_width=True):
+        if _addr_pick == "Select a property…":
+            st.warning("Choose an address from the picker first.")
+        else:
+            chosen = next((o for o in _addr_options if o["label"] == _addr_pick), None)
+            postcode = (chosen or {}).get("postcode") or _addr_pick.split(",")[-2].strip().upper()
+            if postcode:
+                add_to_portfolio(postcode, lat=chosen.get("lat") if chosen else None, lon=chosen.get("lon") if chosen else None)
+                st.rerun()
+
+    _seg_portfolio = _segment_portfolio()
+    if _seg_portfolio:
+        default_ids = [p["id"] for p in _seg_portfolio[:MAX_ACTIVE_ANALYSIS_BUILDINGS]]
+        st.session_state.active_analysis_ids = st.multiselect(
+            "Active analysis buildings (1–3)",
+            options=[p["id"] for p in _seg_portfolio],
+            default=[i for i in st.session_state.get("active_analysis_ids", default_ids) if i in {p["id"] for p in _seg_portfolio}] or default_ids,
+            max_selections=MAX_ACTIVE_ANALYSIS_BUILDINGS,
+            format_func=lambda _id: next((f"{p['postcode']} (EPC {p['epc_band']})" for p in _seg_portfolio if p["id"] == _id), _id),
+            key="active_analysis_ids",
+        )
+        for p_item in _seg_portfolio:
             col_id, col_btn = st.columns([4, 1])
             with col_id:
                 st.markdown(f"<div style='font-size:0.8rem; color:#CBD8E6; padding-top: 5px;'>{p_item['postcode']} (EPC: {p_item['epc_band']})</div>", unsafe_allow_html=True)
@@ -782,7 +849,7 @@ with st.sidebar:
                     remove_from_portfolio(p_item['id'])
                     st.rerun()
     else:
-        st.markdown("<div style='font-size:0.8rem; color:#5A7A90; font-style: italic;'>Portfolio empty. Add a postcode above.</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.8rem; color:#5A7A90; font-style: italic;'>No assets for this segment yet. Use address picker above.</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 # ── Location picker ────────────────────────────────────────────────────────
@@ -1133,15 +1200,6 @@ Gemini API key (for AI Advisor): get one at
                     unsafe_allow_html=True,
                 )
 
-    # ── Data sources ──────────────────────────────────────────────────────────
-    st.markdown("<div class='sb-section'>📚 Data Sources</div>", unsafe_allow_html=True)
-    for src in ["Open-Meteo (weather, default)", "Met Office DataPoint (UK, optional)",
-                "OpenWeatherMap (global, optional)", "GeoNames (city dataset, CC-BY)",
-                "BEIS GHG Factors 2023", "HESA Estates Stats 2022-23",
-                "CIBSE Guide A", "PVGIS (EC JRC)", "Raissi et al. (2019)"]:
-        st.caption(f"· {src}")
-
-    st.markdown("---")
 
     # insert a branded footer. the logo is rendered inline because _logo_html
     # has not yet been computed (it comes later when building the top bar), so
@@ -1174,13 +1232,14 @@ Gemini API key (for AI Advisor): get one at
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPUTE ALL SELECTED SCENARIOS
 # ─────────────────────────────────────────────────────────────────────────────
-if st.session_state.user_segment == "university_he":
-    _active_buildings = dict(BUILDINGS)
-else:
-    _active_buildings = dict(compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {}))
+_active_buildings = _portfolio_buildings_map()
+if not _active_buildings:
+    if st.session_state.user_segment == "university_he":
+        _active_buildings = dict(BUILDINGS)
+    else:
+        _active_buildings = dict(compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {}))
 
 if not _active_buildings:
-    # Defensive fallback: keep app usable if segment metadata is misconfigured.
     _active_buildings = dict(BUILDINGS)
 
 if "selected_building_name" not in st.session_state or \
@@ -1193,7 +1252,7 @@ if selected_building is None:
     st.session_state.selected_building_name = selected_building_name
     selected_building = _active_buildings[selected_building_name]
 
-_valid_scenario_names = list(SCENARIOS.keys())
+_valid_scenario_names = _segment_scenario_options(st.session_state.user_segment)
 _default_scenarios = _segment_default_scenarios(st.session_state.user_segment)
 
 if "selected_scenario_names" not in st.session_state:
@@ -1893,6 +1952,7 @@ with _tab_compliance:
     if _seg not in compliance.SEGMENT_META:
         _seg = "university_he"
     _smeta = compliance.SEGMENT_META[_seg]
+    _prefill = selected_building if isinstance(selected_building, dict) else {}
 
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown(
@@ -1941,19 +2001,19 @@ with _tab_compliance:
         _pl_c1, _pl_c2 = st.columns(2)
         with _pl_c1:
             _pl_u_wall    = st.number_input("Proposed wall U-value (W/m²K)",
-                                            min_value=0.05, max_value=6.0, value=1.6, step=0.01,
+                                            min_value=0.05, max_value=6.0, value=float(_prefill.get("u_value_wall", 1.6)), step=0.01,
                                             help="Part L 2021 target: ≤ 0.18 W/m²K")
             _pl_u_roof    = st.number_input("Proposed roof U-value (W/m²K)",
-                                            min_value=0.05, max_value=6.0, value=2.0, step=0.01,
+                                            min_value=0.05, max_value=6.0, value=float(_prefill.get("u_value_roof", 2.0)), step=0.01,
                                             help="Part L 2021 target: ≤ 0.11 W/m²K")
             _pl_u_glazing = st.number_input("Proposed glazing U-value (W/m²K)",
-                                            min_value=0.50, max_value=6.0, value=2.8, step=0.01,
+                                            min_value=0.50, max_value=6.0, value=float(_prefill.get("u_value_glazing", 2.8)), step=0.01,
                                             help="Part L 2021 target: ≤ 1.20 W/m²K")
         with _pl_c2:
             _pl_area      = st.number_input("Floor area (m²)", min_value=10.0, max_value=2000.0,
-                                            value=120.0, step=5.0)
+                                            value=float(_prefill.get("floor_area_m2", 120.0)), step=5.0)
             _pl_energy    = st.number_input("Estimated annual energy (kWh)",
-                                            min_value=0.0, max_value=500_000.0, value=18000.0,
+                                            min_value=0.0, max_value=500_000.0, value=float(_prefill.get("baseline_energy_mwh", 18.0))*1000,
                                             step=100.0,
                                             help="Total site energy — electricity + gas combined")
 
@@ -2042,18 +2102,18 @@ with _tab_compliance:
         _mees_c1, _mees_c2 = st.columns(2)
         with _mees_c1:
             _m_area    = st.number_input("Floor area (m²)", min_value=10.0, max_value=50_000.0,
-                                         value=500.0, step=10.0, key="mees_area")
+                                         value=float(_prefill.get("floor_area_m2", 500.0)), step=10.0, key="mees_area")
             _m_energy  = st.number_input("Annual energy consumption (kWh)",
-                                         min_value=0.0, max_value=10_000_000.0, value=72_000.0,
+                                         min_value=0.0, max_value=10_000_000.0, value=float(_prefill.get("baseline_energy_mwh", 72.0))*1000,
                                          step=1000.0, key="mees_energy",
                                          help="Total site electricity + gas (kWh/yr from bills)")
             _m_u_wall  = st.number_input("Wall U-value (W/m²K)", min_value=0.05, max_value=6.0,
-                                         value=1.7, step=0.01, key="mees_uwall")
+                                         value=float(_prefill.get("u_value_wall", 1.7)), step=0.01, key="mees_uwall")
         with _mees_c2:
             _m_u_roof  = st.number_input("Roof U-value (W/m²K)", min_value=0.05, max_value=6.0,
-                                         value=1.8, step=0.01, key="mees_uroof")
+                                         value=float(_prefill.get("u_value_roof", 1.8)), step=0.01, key="mees_uroof")
             _m_u_glaz  = st.number_input("Glazing U-value (W/m²K)", min_value=0.50, max_value=6.0,
-                                         value=2.8, step=0.01, key="mees_uglaz")
+                                         value=float(_prefill.get("u_value_glazing", 2.8)), step=0.01, key="mees_uglaz")
             _m_glaz_r  = st.slider("Glazing ratio (% of facade)", min_value=5, max_value=90,
                                     value=35, step=5, key="mees_glazr") / 100.0
 
@@ -2543,28 +2603,29 @@ st.markdown("""
 # TAB 1 — DASHBOARD (Geo-Physics Map Tagging & Segment KPIs)
 # ─────────────────────────────────────────────────────────────────────────────
 with _tab_dash:
-    if not st.session_state.portfolio:
-        st.info("Your portfolio is empty. Use the Sidebar to add properties via UK Postcode.")
+    _segment_assets = _active_portfolio_entries()
+    if not _segment_assets:
+        st.info("No active analysis assets for this segment. Add/select properties in the sidebar.")
     else:
-        _hydrated_count, _hydrate_errors = _hydrate_portfolio_results(st.session_state.portfolio, weather)
+        _hydrated_count, _hydrate_errors = _hydrate_portfolio_results(_segment_assets, weather)
         if _hydrate_errors:
             for _he in _hydrate_errors:
                 st.warning(f"Portfolio data warning: {_he}")
         st.markdown("<h2 style='margin:0;padding:0;'>Portfolio Performance Dashboard</h2>", unsafe_allow_html=True)
-        st.markdown(f"<div style='font-size:0.85rem;color:#5A7A90;margin-bottom:15px;'>Analyzing {len(st.session_state.portfolio)} assets under current weather conditions ({weather['temperature_c']}°C).</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:0.85rem;color:#5A7A90;margin-bottom:15px;'>Analyzing {len(_segment_assets)} assets under current weather conditions ({weather['temperature_c']}°C).</div>", unsafe_allow_html=True)
 
         # ── Segment-Specific KPI Logic ────────────────────────────────────────
         k1, k2, k3, k4 = st.columns(4)
         
         # Aggregation Logic
-        total_baseline_mwh = sum(_safe_nested_number(item, "baseline_results", "scenario_energy_mwh") for item in st.session_state.portfolio)
-        total_baseline_carbon = sum(_safe_nested_number(item, "baseline_results", "scenario_carbon_t") for item in st.session_state.portfolio)
-        total_combined_mwh = sum(_safe_nested_number(item, "combined_results", "scenario_energy_mwh") for item in st.session_state.portfolio)
-        total_combined_carbon = sum(_safe_nested_number(item, "combined_results", "scenario_carbon_t") for item in st.session_state.portfolio)
-        total_cost_saving = sum(_safe_nested_number(item, "combined_results", "annual_saving_gbp") for item in st.session_state.portfolio)
-        total_install_cost = sum(_safe_nested_number(item, "combined_results", "install_cost_gbp") for item in st.session_state.portfolio)
-        total_floor_area = sum(_safe_number(item.get("floor_area_m2"), default=0.0) for item in st.session_state.portfolio)
-        avg_floor_area = (total_floor_area / len(st.session_state.portfolio)) if st.session_state.portfolio else 0.0
+        total_baseline_mwh = sum(_safe_nested_number(item, "baseline_results", "scenario_energy_mwh") for item in _segment_assets)
+        total_baseline_carbon = sum(_safe_nested_number(item, "baseline_results", "scenario_carbon_t") for item in _segment_assets)
+        total_combined_mwh = sum(_safe_nested_number(item, "combined_results", "scenario_energy_mwh") for item in _segment_assets)
+        total_combined_carbon = sum(_safe_nested_number(item, "combined_results", "scenario_carbon_t") for item in _segment_assets)
+        total_cost_saving = sum(_safe_nested_number(item, "combined_results", "annual_saving_gbp") for item in _segment_assets)
+        total_install_cost = sum(_safe_nested_number(item, "combined_results", "install_cost_gbp") for item in _segment_assets)
+        total_floor_area = sum(_safe_number(item.get("floor_area_m2"), default=0.0) for item in _segment_assets)
+        avg_floor_area = (total_floor_area / len(_segment_assets)) if _segment_assets else 0.0
 
         if st.session_state.user_segment == "university_he":
             with k1:
@@ -2579,13 +2640,13 @@ with _tab_dash:
 
         elif st.session_state.user_segment == "smb_landlord":
             total_mees_gap = 0
-            for item in st.session_state.portfolio:
+            for item in _segment_assets:
                 epc_rating = compliance.estimate_epc_rating(item["floor_area_m2"], item["baseline_results"]["scenario_energy_mwh"]*1000, 1.8, 2.0, 2.8, 0.3)
                 gap = compliance.mees_gap_analysis(epc_rating["sap_score"], "C")
                 total_mees_gap += gap["sap_gap"]
             roi = (total_cost_saving / total_install_cost * 100) if total_install_cost > 0 else 0
             with k1:
-                st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Avg MEES Gap</div><div class='kpi-value'>{total_mees_gap/len(st.session_state.portfolio):,.1f}<span class='kpi-unit'> SAP Pts</span></div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Avg MEES Gap</div><div class='kpi-value'>{total_mees_gap/len(_segment_assets):,.1f}<span class='kpi-unit'> SAP Pts</span></div></div>", unsafe_allow_html=True)
             with k2:
                 st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Upgrade Cost (Est)</div><div class='kpi-value'>£{total_install_cost/1000:,.0f}<span class='kpi-unit'>k</span></div></div>", unsafe_allow_html=True)
             with k3:
@@ -2606,7 +2667,7 @@ with _tab_dash:
                 st.markdown(f"<div class='kpi-card accent-green'><div class='kpi-label'>Abatement Potential</div><div class='kpi-value'>{abatement:,.1f}<span class='kpi-unit'>%</span></div></div>", unsafe_allow_html=True)
 
         elif st.session_state.user_segment == "individual_selfbuild":
-            part_l_result = compliance.part_l_compliance_check(1.8, 2.0, 2.8, avg_floor_area, (total_baseline_mwh/len(st.session_state.portfolio))*1000)
+            part_l_result = compliance.part_l_compliance_check(1.8, 2.0, 2.8, avg_floor_area, (total_baseline_mwh/len(_segment_assets))*1000)
             with k1:
                 st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Part L Primary Energy</div><div class='kpi-value'>{part_l_result['primary_energy_est']:,.1f}<span class='kpi-unit'> kWh/m²/yr</span></div></div>", unsafe_allow_html=True)
             with k2:
@@ -2616,7 +2677,7 @@ with _tab_dash:
                 status_text = "Pass" if part_l_result['part_l_2021_pass'] else "Fail"
                 st.markdown(f"<div class='kpi-card' style='border-top-color:{status_color}'><div class='kpi-label'>Compliance Status</div><div class='kpi-value' style='color:{status_color}'>{status_text}<span class='kpi-unit'></span></div></div>", unsafe_allow_html=True)
             with k4:
-                st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Upgrade Cost</div><div class='kpi-value'>£{total_install_cost/len(st.session_state.portfolio)/1000:,.0f}<span class='kpi-unit'>k / home</span></div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Upgrade Cost</div><div class='kpi-value'>£{total_install_cost/len(_segment_assets)/1000:,.0f}<span class='kpi-unit'>k / home</span></div></div>", unsafe_allow_html=True)
 
         st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
@@ -2625,9 +2686,9 @@ with _tab_dash:
         with c1:
             st.markdown("<div class='chart-card'><div class='chart-title'>⚡ Portfolio Energy (MWh/yr)</div>", unsafe_allow_html=True)
             fig_e = go.Figure()
-            x_labels = [f"{p['postcode'][:4]}..." for p in st.session_state.portfolio]
-            y_base = [p["baseline_results"]["scenario_energy_mwh"] for p in st.session_state.portfolio]
-            y_comb = [p["combined_results"]["scenario_energy_mwh"] for p in st.session_state.portfolio]
+            x_labels = [f"{p['postcode'][:4]}..." for p in _segment_assets]
+            y_base = [p["baseline_results"]["scenario_energy_mwh"] for p in _segment_assets]
+            y_comb = [p["combined_results"]["scenario_energy_mwh"] for p in _segment_assets]
             fig_e.add_trace(go.Bar(name="Baseline", x=x_labels, y=y_base, marker_color="#4A6FA5"))
             fig_e.add_trace(go.Bar(name="Post-Intervention", x=x_labels, y=y_comb, marker_color="#00C2A8"))
             fig_e.update_layout(**CHART_LAYOUT, barmode='group', yaxis_title="MWh / year")
@@ -2637,8 +2698,8 @@ with _tab_dash:
         with c2:
             st.markdown("<div class='chart-card'><div class='chart-title'>🌍 Portfolio Carbon (t CO₂e/yr)</div>", unsafe_allow_html=True)
             fig_c = go.Figure()
-            y_base_c = [p["baseline_results"]["scenario_carbon_t"] for p in st.session_state.portfolio]
-            y_comb_c = [p["combined_results"]["scenario_carbon_t"] for p in st.session_state.portfolio]
+            y_base_c = [p["baseline_results"]["scenario_carbon_t"] for p in _segment_assets]
+            y_comb_c = [p["combined_results"]["scenario_carbon_t"] for p in _segment_assets]
             fig_c.add_trace(go.Bar(name="Baseline", x=x_labels, y=y_base_c, marker_color="#FFA500"))
             fig_c.add_trace(go.Bar(name="Post-Intervention", x=x_labels, y=y_comb_c, marker_color="#1DB87A"))
             fig_c.update_layout(**CHART_LAYOUT, barmode='group', yaxis_title="Tonnes CO₂e / year")
@@ -2647,28 +2708,26 @@ with _tab_dash:
 
         # ── 3D/4D Spatial View & Geo-Physics Mapping (FIXED LAYOUT) ───────────
         st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='sec-hdr'>🗺️ Spatial View & Geo-Physics Mapping</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sec-hdr'>🗺️ Property Map</div>", unsafe_allow_html=True)
         
         map_search_col, map_view_col = st.columns([1, 3])
         
         with map_search_col:
-            st.markdown("<div style='font-size:0.85rem; font-weight:600; color:#071A2F;'>Asset Geo-Locator</div>", unsafe_allow_html=True)
-            search_pc = st.text_input("Locate Postcode in Portfolio", placeholder="e.g. SW1A 1AA")
-            if search_pc:
-                if any(p["postcode"] == search_pc for p in st.session_state.portfolio):
-                    st.success("Asset found in active portfolio.")
-                else:
-                    st.warning("Asset not in portfolio.")
-            
-            st.markdown("<div style='margin-top:20px; font-size:0.8rem; color:#5A7A90;'><b>Legend: Carbon Reduction</b><br/>🟩 100% Reduction<br/>🟨 50% Reduction<br/>🟥 0% Reduction</div>", unsafe_allow_html=True)
-            st.caption("Polygons represent physical building bounds for PINN analysis.")
+            st.markdown("<div style='font-size:0.85rem; font-weight:600; color:#071A2F;'>Property Map</div>", unsafe_allow_html=True)
+            st.caption("Pins are based on selected portfolio postcodes.")
+            if st.session_state.user_segment == "university_he":
+                _advanced_3d = st.toggle("Advanced 3D view", value=False)
+            else:
+                _advanced_3d = False
 
         with map_view_col:
             _map_data = []
-            center_lat, center_lon = st.session_state.wx_lat, st.session_state.wx_lon
+            center_lat = float(_segment_assets[0].get("lat", st.session_state.wx_lat) or st.session_state.wx_lat)
+            center_lon = float(_segment_assets[0].get("lon", st.session_state.wx_lon) or st.session_state.wx_lon)
 
-            for i, p in enumerate(st.session_state.portfolio):
-                asset_lat, asset_lon = center_lat + (np.sin(i) * 0.01), center_lon + (np.cos(i) * 0.01)
+            for i, p in enumerate(_segment_assets):
+                asset_lat = float(p.get("lat") or (center_lat + (np.sin(i) * 0.01)))
+                asset_lon = float(p.get("lon") or (center_lon + (np.cos(i) * 0.01)))
                 reduction = p["combined_results"]["energy_saving_pct"]
                 ratio = max(0.0, min(1.0, reduction / 100.0))
                 r = int(220 - ratio * 220)
@@ -2683,28 +2742,32 @@ with _tab_dash:
                 })
 
             if _map_data:
-                try:
-                    import pydeck as pdk
-                    deck = pdk.Deck(
-                        map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-                        initial_view_state=pdk.ViewState(latitude=center_lat, longitude=center_lon, zoom=12, pitch=45),
-                        layers=[pdk.Layer("PolygonLayer", data=pd.DataFrame(_map_data), get_polygon="polygon", get_elevation="elevation", get_fill_color="fill_color", extruded=True, pickable=True, auto_highlight=True)],
-                        tooltip={"html": "<div style='font-family:Nunito Sans;'><b>{name}</b><br/>Reduction: {energy_saving_pct}%<br/>Carbon Saved: {carbon_saving_t} t</div>"}
-                    )
-                    st.pydeck_chart(deck, use_container_width=True)
-                except Exception as e:
-                    st.error(f"PyDeck failed: {e}")
+                _map_df = pd.DataFrame(_map_data)[["lat", "lon"]]
+                st.map(_map_df, use_container_width=True)
+                if _advanced_3d:
+                    try:
+                        import pydeck as pdk
+                        deck = pdk.Deck(
+                            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+                            initial_view_state=pdk.ViewState(latitude=center_lat, longitude=center_lon, zoom=12, pitch=45),
+                            layers=[pdk.Layer("PolygonLayer", data=pd.DataFrame(_map_data), get_polygon="polygon", get_elevation="elevation", get_fill_color="fill_color", extruded=True, pickable=True, auto_highlight=True)],
+                            tooltip={"html": "<div style='font-family:Nunito Sans;'><b>{name}</b><br/>Reduction: {energy_saving_pct}%<br/>Carbon Saved: {carbon_saving_t} t</div>"}
+                        )
+                        st.pydeck_chart(deck, use_container_width=True)
+                    except Exception as e:
+                        st.warning(f"Advanced 3D view unavailable: {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 — FINANCIAL ANALYSIS
 # ─────────────────────────────────────────────────────────────────────────────
 with _tab_fin:
     st.markdown("<h3 style='margin-bottom:4px;'>Financial Analysis & Investment Appraisal</h3>", unsafe_allow_html=True)
-    if not st.session_state.portfolio:
+    _segment_assets = _active_portfolio_entries()
+    if not _segment_assets:
         st.info("Add assets to your portfolio to view financial projections.")
     else:
-        total_install = sum(_safe_nested_number(p, "combined_results", "install_cost_gbp") for p in st.session_state.portfolio)
-        total_annual_saving = sum(_safe_nested_number(p, "combined_results", "annual_saving_gbp") for p in st.session_state.portfolio)
+        total_install = sum(_safe_nested_number(p, "combined_results", "install_cost_gbp") for p in _segment_assets)
+        total_annual_saving = sum(_safe_nested_number(p, "combined_results", "annual_saving_gbp") for p in _segment_assets)
         
         fc1, fc2 = st.columns(2)
         with fc1:
@@ -2784,7 +2847,7 @@ with _tab_ai:
             st.session_state.chat_history.append({"role": "user", "content": _pq})
             
             # Map portfolio array to the format expected by physics tools
-            _portfolio_buildings = {p["postcode"]: p["physics_model_input"] for p in st.session_state.portfolio}
+            _portfolio_buildings = {p["postcode"]: p["physics_model_input"] for p in _segment_assets}
             
             with st.spinner("🤖 Running physics simulations and reasoning…"):
                 # EXECUTION: Full unsummarized agent loop
