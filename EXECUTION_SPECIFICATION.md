@@ -375,8 +375,8 @@ scenario = {'u_wall_factor': 0.6, 'u_roof_factor': 0.7, 'u_glazing_factor': 0.8,
             'renewable_kwh': 0, 'install_cost_gbp': 50000}
 weather = {'temperature_c': 8.5}
 result = calculate_thermal_load(building, scenario, weather)
-assert 'annual_energy_mwh' in result
-assert 'carbon_saving_tco2' in result
+assert 'scenario_energy_mwh' in result, f'Missing scenario_energy_mwh. Keys: {list(result)}'
+assert 'carbon_saving_t' in result, f'Missing carbon_saving_t. Keys: {list(result)}'
 print('calculate_thermal_load: OK')
 "
 
