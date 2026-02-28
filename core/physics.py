@@ -19,48 +19,6 @@ SOLAR_IRRADIANCE_KWH_M2_YEAR = 950.0
 SOLAR_APERTURE_FACTOR = 0.6
 SOLAR_UTILISATION_FACTOR = 0.3
 
-# ── BUILDING DATA ─────────────────────────────────────────────────────────────
-BUILDINGS: dict[str, dict] = {
-    "Greenfield Library": {
-        "floor_area_m2":       8500,
-        "height_m":            4.5,
-        "glazing_ratio":       0.35,
-        "u_value_wall":        1.8,
-        "u_value_roof":        2.1,
-        "u_value_glazing":     2.8,
-        "baseline_energy_mwh": 487,
-        "occupancy_hours":     3500,
-        "description":         "Main campus library — 8,500 m² · 5 floors · Heavy glazing",
-        "built_year":          "Pre-1990",
-        "building_type":       "Library / Learning Hub",
-    },
-    "Greenfield Arts Building": {
-        "floor_area_m2":       11200,
-        "height_m":            5.0,
-        "glazing_ratio":       0.28,
-        "u_value_wall":        2.1,
-        "u_value_roof":        1.9,
-        "u_value_glazing":     3.1,
-        "baseline_energy_mwh": 623,
-        "occupancy_hours":     4000,
-        "description":         "Humanities faculty — 11,200 m² · 6 floors · Lecture theatres",
-        "built_year":          "Pre-1985",
-        "building_type":       "Teaching / Lecture",
-    },
-    "Greenfield Science Block": {
-        "floor_area_m2":       6800,
-        "height_m":            4.0,
-        "glazing_ratio":       0.30,
-        "u_value_wall":        1.6,
-        "u_value_roof":        1.7,
-        "u_value_glazing":     2.6,
-        "baseline_energy_mwh": 391,
-        "occupancy_hours":     3200,
-        "description":         "Science laboratories — 6,800 m² · 4 floors · Lab-heavy usage",
-        "built_year":          "Pre-1995",
-        "building_type":       "Laboratory / Research",
-    },
-}
 
 
 def _validate_model_inputs(building: dict, scenario: dict, weather_data: dict) -> None:
