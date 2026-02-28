@@ -221,6 +221,14 @@ function detectLocation() {
       var lon = pos.coords.longitude.toFixed(4);
       status.innerHTML = '\u2713 Located: ' + lat + ', ' + lon + ' \u2014 loading\u2026';
 
+      // always notify Streamlit of the coordinates so Python can handle them
+      try {
+        const Streamlit = window.parent.Streamlit || window.parent.streamlit;
+        Streamlit.setComponentValue({lat: lat, lon: lon});
+      } catch(_ignored) {
+        // gracefully ignore if API isn't available
+      }
+
       // Try to update the parent URL so that a refresh preserves the choice.
       // If this fails we still send the coords back to Python below.
       try {
@@ -233,15 +241,7 @@ function detectLocation() {
           + '<br/>Enter them manually below.';
         btn.disabled = false;
         // use HTML entity for pushpin to avoid Python surrogate issues
-        btn.textContent = '📍 Detect My Location';
-      }
-
-      // always notify Streamlit of the coordinates so Python can handle them
-      try {
-        const Streamlit = window.parent.Streamlit || window.parent.streamlit;
-        Streamlit.setComponentValue({lat: lat, lon: lon});
-      } catch(_ignored) {
-        // gracefully ignore if API isn't available
+        btn.textContent = '\\uD83D\\uDCCD Detect My Location';
       }
     },
     function(err) {
@@ -249,7 +249,7 @@ function detectLocation() {
       status.innerHTML = '\u274c ' + (msgs[err.code] || err.message)
                         + ' (try again or enter coords manually)';
       btn.disabled = false;
-      btn.textContent = '📍 Detect My Location';
+      btn.textContent = '\\uD83D\\uDCCD Detect My Location';
     },
     { timeout: 20000, maximumAge: 300000 }
   );
