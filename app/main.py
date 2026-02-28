@@ -6,9 +6,11 @@ NOTE: This is a transitional stub maintained during the refactor.
       Imports have been aligned with the restored Batch 1 module contracts.
 """
 import streamlit as st
-from app.session import init_session
-from app.branding import inject_branding, PAGE_CONFIG
-from app.segments import get_segment_handler, SEGMENT_IDS, SEGMENT_LABELS
+import importlib
+from .session import initialize_session_state
+from .branding import display_branding
+from .utils import show_congratulations
+from ..config.constants import SEGMENT_DEFINITIONS
 
 
 def run():

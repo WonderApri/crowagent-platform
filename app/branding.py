@@ -22,6 +22,7 @@ import base64
 import os
 
 import streamlit as st
+from ..config.constants import CROWAGENT_LOGO_HORIZONTAL_DARK_URL
 
 
 # ─────────────────────────────────────────────────────────────────────────────
