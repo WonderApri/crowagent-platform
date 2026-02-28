@@ -325,6 +325,7 @@ def _build_deck(
     center_lat: float = _DEFAULT_LAT,
     center_lon: float = _DEFAULT_LON,
     osm_rows: list[dict] | None = None,
+    road_rows: list[dict] | None = None,
     selected_building: str | None = None,
     tooltip_html: str = _TOOLTIP_HTML,
     map_style: str = _MAP_STYLE_LIGHT,
@@ -359,7 +360,21 @@ def _build_deck(
 
     layers: list = []
 
-    # 1 — Real OSM surroundings (actual building heights, not interactive)
+    # 1 — Road network context (street geometry from OSM)
+    if road_rows:
+        layers.append(pdk.Layer(
+            "PathLayer",
+            data=pd.DataFrame(road_rows),
+            get_path="path",
+            get_color=[120, 132, 148, 170],
+            get_width="width",
+            width_units="pixels",
+            width_min_pixels=1,
+            rounded=True,
+            pickable=False,
+        ))
+
+    # 2 — Real OSM surroundings (actual building heights, not interactive)
     surround_rows: list[dict] = []
     if osm_rows:
         campus_polys = {tuple(map(tuple, r["polygon"])) for r in display_rows}
@@ -382,7 +397,7 @@ def _build_deck(
             wireframe=False,
         ))
 
-    # 2 — Campus buildings (real footprint, actual height, rich tooltip)
+    # 3 — Campus buildings (real footprint, actual height, rich tooltip)
     layers.append(pdk.Layer(
         "PolygonLayer",
         data=pd.DataFrame(display_rows),
@@ -399,7 +414,7 @@ def _build_deck(
         wireframe=False,
     ))
 
-    # 3 — Location pin
+    # 4 — Location pin
     layers.append(pdk.Layer(
         "ScatterplotLayer",
         data=pd.DataFrame([{"lat": center_lat, "lon": center_lon}]),
@@ -418,11 +433,21 @@ def _build_deck(
             latitude=center_lat,
             longitude=center_lon,
             zoom=16,
-            pitch=55,
-            bearing=-5,
+            pitch=62,
+            bearing=-8,
         ),
         tooltip={"html": tooltip_html,
                  "style": {"backgroundColor": "transparent", "border": "none"}},
+        effects=[
+            pdk.LightSettings(
+                lights_position=[center_lon, center_lat, 80_000, center_lon, center_lat, 8_000],
+                ambient_ratio=0.38,
+                diffuse_ratio=0.62,
+                specular_ratio=0.15,
+                lights_strength=[0.9, 0.2, 0.6, 0.0],
+                number_of_lights=2,
+            )
+        ],
         map_style=map_style,
     )
 
@@ -474,6 +499,7 @@ def _render_3d_map(
     center_lat: float,
     center_lon: float,
     osm_rows: list[dict] | None = None,
+    road_rows: list[dict] | None = None,
     selected_building: str | None = None,
 ) -> None:
     """Render the Google Maps-style 3D digital twin on a light CARTO basemap.
@@ -523,6 +549,7 @@ def _render_3d_map(
         deck = _build_deck(
             rows, center_lat, center_lon,
             osm_rows=osm_rows,
+            road_rows=road_rows,
             selected_building=selected_building,
             map_style=_MAP_STYLE_LIGHT,
         )
@@ -627,8 +654,9 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         st.session_state["viz3d_last_location"] = cur_loc
 
     # ── Fetch real surrounding buildings from OSM ─────────────────────────────
-    with st.spinner(f"Loading buildings around {location_label}…"):
+    with st.spinner(f"Loading buildings and streets around {location_label}…"):
         osm_rows = fetch_osm_buildings(center_lat, center_lon, radius_m=600)
+        road_rows = fetch_osm_roads(center_lat, center_lon, radius_m=750)
 
     # ── Hover/selection hint ──────────────────────────────────────────────────
     if selected_building:
@@ -652,6 +680,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         scenario_for_map, weather,
         center_lat, center_lon,
         osm_rows=osm_rows,
+        road_rows=road_rows,
         selected_building=selected_building,
     )
 
@@ -1059,6 +1088,39 @@ def fetch_osm_buildings(lat: float, lon: float, radius_m: int = 700) -> List[Dic
                     pass
             rows.append({"polygon": coords, "height_m": h,
                           "name": way.tags.get("name", "")})
+        return rows
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_osm_roads(lat: float, lon: float, radius_m: int = 700) -> List[Dict]:
+    """Fetch nearby OSM roads as path rows for a deck.gl PathLayer.
+
+    Returns a list of dicts with keys ``path`` ([[lon, lat], ...]),
+    ``kind`` and ``width``. Returns ``[]`` on any network/parse failure.
+    """
+    d_lat = radius_m / 111_000.0
+    d_lon = radius_m / (111_000.0 * math.cos(math.radians(lat)))
+    bbox = (lat - d_lat, lon - d_lon, lat + d_lat, lon + d_lon)
+    query = (
+        f"way[highway]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});"
+        "(._;>;); out body;"
+    )
+    try:
+        result = overpy.Overpass().query(query)
+        rows: List[Dict] = []
+        for way in result.ways:
+            coords = [[float(n.lon), float(n.lat)] for n in way.nodes]
+            if len(coords) < 2:
+                continue
+            kind = str(way.tags.get("highway", "road"))
+            width = 5
+            if kind in {"motorway", "trunk", "primary"}:
+                width = 9
+            elif kind in {"secondary", "tertiary"}:
+                width = 7
+            rows.append({"path": coords, "kind": kind, "width": width})
         return rows
     except Exception:
         return []
