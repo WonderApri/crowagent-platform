@@ -3,10 +3,10 @@ Main application logic for the Streamlit app.
 """
 import streamlit as st
 import importlib
-from app.session import initialize_session_state
-from app.branding import display_branding
-from app.utils import show_congratulations
-from config.constants import SEGMENT_DEFINITIONS
+from .session import initialize_session_state
+from .branding import display_branding
+from .utils import show_congratulations
+from ..config.constants import SEGMENT_DEFINITIONS
 
 def get_segment_class(segment_name):
     """

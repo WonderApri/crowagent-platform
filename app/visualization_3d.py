@@ -226,7 +226,7 @@ def _compute_all_buildings(
     Each row includes both baseline and scenario energy/carbon figures so the
     tooltip can show the full comparison in one hover card.
     """
-    from core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
+    from ..core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
 
     scenario_cfg = SCENARIOS.get(scenario_name)
     if scenario_cfg is None:
@@ -776,7 +776,7 @@ def _render_building_info_panel(
     KPI strip    — 4 metrics: energy, carbon, cost, grid intensity
     Tabs         — 📋 Overview | 📅 Seasonal Energy | ⚡ Scenarios
     """
-    from core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
+    from ..core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
 
     bdata  = BUILDINGS.get(building_name)
     if bdata is None:

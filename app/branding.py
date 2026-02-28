@@ -2,7 +2,7 @@
 Handles the branding and sidebar elements of the application.
 """
 import streamlit as st
-from config.constants import CROWAGENT_LOGO_HORIZONTAL_DARK_URL
+from ..config.constants import CROWAGENT_LOGO_HORIZONTAL_DARK_URL
 
 def display_branding():
     """
