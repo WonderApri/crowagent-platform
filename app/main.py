@@ -8,16 +8,11 @@ import streamlit as st
 
 import app.branding as branding
 import app.session as session
-import app.sidebar as sidebar
-from app.segments import get_segment_handler
-import app.tabs.dashboard as tab_dashboard
-import app.tabs.financial as tab_financial
-import app.tabs.compliance_hub as tab_compliance
 
 # ── Page config (must be first Streamlit call at module level) ──────────────
 st.set_page_config(**branding.PAGE_CONFIG)
 
-# ── KPI card component (used by tab modules via import) ─────────────────────
+# ── KPI card component — defined BEFORE tab imports to prevent circular import
 def _card(label: str, value: str, subtext: str, accent_class: str = "") -> None:
     """Renders a compact KPI card. Imported by tab modules as per spec."""
     st.markdown(
@@ -30,6 +25,12 @@ def _card(label: str, value: str, subtext: str, accent_class: str = "") -> None:
         """,
         unsafe_allow_html=True,
     )
+
+import app.sidebar as sidebar
+from app.segments import get_segment_handler
+import app.tabs.dashboard as tab_dashboard
+import app.tabs.financial as tab_financial
+import app.tabs.compliance_hub as tab_compliance
 
 # ── Query param persistence (F5 durability) ─────────────────────────────────
 def _resolve_query_params() -> None:

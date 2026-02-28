@@ -1,8 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # CrowAgent™ Platform — Commercial Landlord Segment Handler
 # © 2026 Aparajita Parihar. All rights reserved.
-#
-# Building data sourced from app/compliance.py SEGMENT_BUILDINGS["smb_landlord"].
 # ═══════════════════════════════════════════════════════════════════════════════
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ class CommercialLandlordHandler(SegmentHandler):
 
     @property
     def segment_id(self) -> str:
-        return "smb_landlord"
+        return "commercial_landlord"
 
     @property
     def display_label(self) -> str:
@@ -37,7 +35,7 @@ class CommercialLandlordHandler(SegmentHandler):
                 "description":         "SMB office — 500 m² · Typical pre-2010 commercial fit-out",
                 "built_year":          "Pre-2010",
                 "building_type":       "Office / Commercial",
-                "segment":             "smb_landlord",
+                "segment":             "commercial_landlord",
             },
             "Example Retail Unit (200 m²)": {
                 "floor_area_m2":       200,
@@ -51,7 +49,7 @@ class CommercialLandlordHandler(SegmentHandler):
                 "description":         "SMB retail unit — 200 m² · High glazing frontage",
                 "built_year":          "Pre-2005",
                 "building_type":       "Retail / Shopfront",
-                "segment":             "smb_landlord",
+                "segment":             "commercial_landlord",
             },
             "Example Light Industrial Unit (1,200 m²)": {
                 "floor_area_m2":       1200,
@@ -65,17 +63,17 @@ class CommercialLandlordHandler(SegmentHandler):
                 "description":         "SMB light industrial — 1,200 m² · Single-skin metal cladding",
                 "built_year":          "Pre-2000",
                 "building_type":       "Industrial / Warehouse",
-                "segment":             "smb_landlord",
+                "segment":             "commercial_landlord",
             },
         }
 
     @property
     def scenario_whitelist(self) -> list[str]:
-        return SEGMENT_SCENARIOS["smb_landlord"]
+        return SEGMENT_SCENARIOS["commercial_landlord"]
 
     @property
     def default_scenarios(self) -> list[str]:
-        return SEGMENT_DEFAULT_SCENARIOS["smb_landlord"]
+        return SEGMENT_DEFAULT_SCENARIOS["commercial_landlord"]
 
     @property
     def compliance_checks(self) -> list[str]:
