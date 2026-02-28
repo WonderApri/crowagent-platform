@@ -22,5 +22,9 @@ SEGMENT_DEFINITIONS = {
     "University/HE": {
         "class": "UniversityHESegment",
         "module": "app.segments.university_he"
+    },
+    "Real Estate Developer": {
+        "class": "RealEstateDeveloperSegment",
+        "module": "app.segments.real_estate_developer"
     }
 }
