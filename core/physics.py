@@ -62,69 +62,6 @@ BUILDINGS: dict[str, dict] = {
     },
 }
 
-SCENARIOS: dict[str, dict] = {
-    "Baseline (No Intervention)": {
-        "description":            "Current state — no modifications applied.",
-        "u_wall_factor":          1.0,
-        "u_roof_factor":          1.0,
-        "u_glazing_factor":       1.0,
-        "solar_gain_reduction":   0.0,
-        "infiltration_reduction": 0.0,
-        "renewable_kwh":          0,
-        "install_cost_gbp":       0,
-        "colour":                 "#4A6FA5",
-        "icon":                   "🏢",
-    },
-    "Solar Glass Installation": {
-        "description":            "Replace standard glazing with BIPV solar glass. U-value improvement ~45%.",
-        "u_wall_factor":          1.0,
-        "u_roof_factor":          1.0,
-        "u_glazing_factor":       0.55,
-        "solar_gain_reduction":   0.15,
-        "infiltration_reduction": 0.05,
-        "renewable_kwh":          42000,
-        "install_cost_gbp":       280000,
-        "colour":                 "#00C2A8",
-        "icon":                   "☀️",
-    },
-    "Green Roof Installation": {
-        "description":            "Vegetated green roof layer. Roof U-value improvement ~55%.",
-        "u_wall_factor":          1.0,
-        "u_roof_factor":          0.45,
-        "u_glazing_factor":       1.0,
-        "solar_gain_reduction":   0.0,
-        "infiltration_reduction": 0.02,
-        "renewable_kwh":          0,
-        "install_cost_gbp":       95000,
-        "colour":                 "#1DB87A",
-        "icon":                   "🌱",
-    },
-    "Enhanced Insulation Upgrade": {
-        "description":            "Wall, roof and glazing upgrade to near-Passivhaus standard.",
-        "u_wall_factor":          0.40,
-        "u_roof_factor":          0.35,
-        "u_glazing_factor":       0.70,
-        "solar_gain_reduction":   0.0,
-        "infiltration_reduction": 0.20,
-        "renewable_kwh":          0,
-        "install_cost_gbp":       520000,
-        "colour":                 "#0A5C3E",
-        "icon":                   "🏗️",
-    },
-    "Combined Package (All Interventions)": {
-        "description":            "Solar glass + green roof + enhanced insulation simultaneously.",
-        "u_wall_factor":          0.40,
-        "u_roof_factor":          0.35,
-        "u_glazing_factor":       0.55,
-        "solar_gain_reduction":   0.15,
-        "infiltration_reduction": 0.22,
-        "renewable_kwh":          42000,
-        "install_cost_gbp":       895000,
-        "colour":                 "#062E1E",
-        "icon":                   "⚡",
-    },
-}
-
 
 def _validate_model_inputs(building: dict, scenario: dict, weather_data: dict) -> None:
     """Hard validation to avoid non-physical or misleading outputs."""
