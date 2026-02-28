@@ -71,3 +71,6 @@ def run() -> None:
         tab_financial.render(handler, portfolio)
     with tab3:
         tab_compliance.render(handler, portfolio)
+
+if __name__ == "__main__":
+    run()
