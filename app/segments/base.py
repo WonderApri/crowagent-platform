@@ -1,52 +1,85 @@
-"""
-Defines the base class for all customer segments.
-"""
-from abc import ABC, abstractmethod
-import streamlit as st
+# ═══════════════════════════════════════════════════════════════════════════════
+# CrowAgent™ Platform — Segment Handler Abstract Base Class
+# © 2026 Aparajita Parihar. All rights reserved.
+#
+# Architecture rule:
+#   Zero Streamlit imports permitted in this file or any SegmentHandler subclass.
+#   Segment handlers are pure data/configuration providers.
+#   All rendering is the responsibility of app/tabs/*.py modules.
+# ═══════════════════════════════════════════════════════════════════════════════
 
-class Segment(ABC):
+from __future__ import annotations
+
+import abc
+
+
+class SegmentHandler(abc.ABC):
+    """Abstract base class for all CrowAgent user-segment handlers.
+
+    Concrete subclasses provide building registries, scenario whitelists,
+    and compliance metadata for a specific customer segment.  They contain
+    NO rendering logic and import NO Streamlit symbols.
     """
-    An abstract base class for customer segments.
-    """
-    def __init__(self, name):
-        self.name = name
 
-    def render(self):
-        """
-        Renders the main content area for the segment.
-        """
-        st.header(f"Segment: {self.name}")
-        
-        # Create a tab layout
-        tab1, tab2, tab3 = st.tabs(["Data Input", "Analysis", "Recommendations"])
+    # ── Abstract properties ───────────────────────────────────────────────────
 
-        with tab1:
-            self.render_data_input_tab()
-        with tab2:
-            self.render_analysis_tab()
-        with tab3:
-            self.render_recommendations_tab()
+    @property
+    @abc.abstractmethod
+    def segment_id(self) -> str:
+        """Canonical snake_case segment identifier (e.g. 'university_he')."""
 
-    @abstractmethod
-    def render_data_input_tab(self):
-        """
-        Renders the content for the 'Data Input' tab.
-        This method must be implemented by subclasses.
-        """
-        pass
+    @property
+    @abc.abstractmethod
+    def display_label(self) -> str:
+        """Human-readable label with emoji prefix (e.g. '🏛️ University / HE')."""
 
-    @abstractmethod
-    def render_analysis_tab(self):
-        """
-        Renders the content for the 'Analysis' tab.
-        This method must be implemented by subclasses.
-        """
-        pass
+    @property
+    @abc.abstractmethod
+    def building_registry(self) -> dict[str, dict]:
+        """Dict mapping building name → building specification dict.
 
-    @abstractmethod
-    def render_recommendations_tab(self):
+        Each value must contain at minimum:
+          floor_area_m2, height_m, glazing_ratio,
+          u_value_wall, u_value_roof, u_value_glazing,
+          baseline_energy_mwh, occupancy_hours, description,
+          built_year, building_type.
         """
-        Renders the content for the 'Recommendations' tab.
-        This method must be implemented by subclasses.
+
+    @property
+    @abc.abstractmethod
+    def scenario_whitelist(self) -> list[str]:
+        """Ordered list of scenario names available to this segment.
+
+        Every entry must be a key in config.scenarios.SCENARIOS.
         """
-        pass
+
+    @property
+    @abc.abstractmethod
+    def default_scenarios(self) -> list[str]:
+        """Scenario names pre-selected on first load.
+
+        Must be a subset of scenario_whitelist.
+        """
+
+    @property
+    @abc.abstractmethod
+    def compliance_checks(self) -> list[str]:
+        """Compliance module IDs relevant to this segment.
+
+        Valid values: 'epc_mees', 'part_l', 'fhs', 'secr'.
+        """
+
+    # ── Concrete methods ──────────────────────────────────────────────────────
+
+    def get_building(self, name: str) -> dict:
+        """Return the building spec for *name* from this segment's registry.
+
+        Raises:
+            KeyError: if *name* is not present in building_registry.
+        """
+        if name not in self.building_registry:
+            raise KeyError(
+                f"Building {name!r} not found in {self.segment_id!r} registry. "
+                f"Available: {list(self.building_registry)}"
+            )
+        return self.building_registry[name]
