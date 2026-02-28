@@ -167,7 +167,7 @@ def _render_ai_advisor_panel(handler: SegmentHandler):
                 )
 
                 if response.get("error"):
-                    st.error(response["error"])
+                    st.warning(response["error"])
                 else:
                     answer = response.get("answer", "I could not find an answer.")
                     message_placeholder.markdown(answer)

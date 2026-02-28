@@ -43,14 +43,17 @@ def render(handler: SegmentHandler, portfolio: list[dict]):
             
             for sc_name in handler.scenario_whitelist:
                 if sc_name in SCENARIOS and SCENARIOS[sc_name]['install_cost_gbp'] > 0:
-                    res = core.physics.calculate_thermal_load(building_data, SCENARIOS[sc_name], {"temperature_c": 10.5})
-                    rows.append({
-                        "Building": entry['display_name'],
-                        "Scenario": sc_name,
-                        "Cost Saving (£/yr)": res.get('annual_saving_gbp', 0),
-                        "Payback (yrs)": res.get('payback_years', 'N/A'),
-                        "10yr ROI (£)": res.get('roi_10yr_gbp', 0)
-                    })
+                    try:
+                        res = core.physics.calculate_thermal_load(building_data, SCENARIOS[sc_name], {"temperature_c": 10.5})
+                        rows.append({
+                            "Building": entry['display_name'],
+                            "Scenario": sc_name,
+                            "Cost Saving (£/yr)": res.get('annual_saving_gbp', 0),
+                            "Payback (yrs)": res.get('payback_years', 'N/A'),
+                            "10yr ROI (£)": res.get('roi_10yr_gbp', 0)
+                        })
+                    except (ValueError, KeyError) as e: # Per Batch 6, harden calculations
+                        st.warning(f"Could not calculate financial metrics for '{entry['display_name']}' with scenario '{sc_name}': {e}")
     if rows:
         df = pd.DataFrame(rows)
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -81,8 +84,8 @@ def render(handler: SegmentHandler, portfolio: list[dict]):
                 buildings=handler.building_registry,
                 scenarios=SCENARIOS
             )
-            if "error" in result:
-                st.error(result["error"])
+            if result.get("error"):
+                st.warning(result["error"]) # Per Batch 6, use st.warning for API/tool errors
             elif "top_recommendation" in result:
                 rec = result["top_recommendation"]
                 st.success(f"**Top Recommendation:** Implement **{rec['scenario']}** on **{rec['building']}**.")

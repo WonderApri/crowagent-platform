@@ -82,7 +82,7 @@ def render(handler: SegmentHandler, weather: dict, portfolio: list[dict]):
                 try:
                     result = physics.calculate_thermal_load(building_data, SCENARIOS[sc_name], weather)
                     chart_data.append({"scenario": sc_name, "energy": result["scenario_energy_mwh"]})
-                except Exception as e:
+                except (ValueError, KeyError) as e: # Per Batch 6, tighten exception clauses
                     st.warning(f"Could not calculate '{sc_name}': {e}")
 
     if chart_data:
