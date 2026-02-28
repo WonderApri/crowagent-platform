@@ -1,5 +1,9 @@
 """
 Main application logic for the Streamlit app.
+
+NOTE: This is a transitional stub maintained during the refactor.
+      Full orchestration logic will be restored in Batch 5 (UI Redesign).
+      Imports have been aligned with the restored Batch 1 module contracts.
 """
 import streamlit as st
 import importlib
@@ -8,66 +12,39 @@ from .branding import display_branding
 from .utils import show_congratulations
 from ..config.constants import SEGMENT_DEFINITIONS
 
-def get_segment_class(segment_name):
-    """
-    Dynamically imports and returns the class for a given segment.
-    """
-    segment_info = SEGMENT_DEFINITIONS.get(segment_name)
-    if not segment_info:
-        return None
-    
-    module_name = segment_info["module"]
-    class_name = segment_info["class"]
-    
-    try:
-        module = importlib.import_module(module_name)
-        segment_class = getattr(module, class_name)
-        return segment_class
-    except (ImportError, AttributeError) as e:
-        st.error(f"Error loading segment '{segment_name}': {e}")
-        return None
 
 def run():
     """
     The main function that orchestrates the Streamlit application.
     """
-    st.set_page_config(
-        page_title="CrowAgent Insights",
-        page_icon=":bird:",
-        layout="wide"
-    )
-
-    initialize_session_state()
-    display_branding()
+    st.set_page_config(**PAGE_CONFIG)
+    inject_branding()
+    init_session()
 
     st.sidebar.title("Segment Selection")
-    
+
     # Segment selection dropdown
-    segment_options = list(SEGMENT_DEFINITIONS.keys())
-    selected_segment_name = st.sidebar.selectbox(
+    label_options = [""] + [SEGMENT_LABELS[sid] for sid in SEGMENT_IDS]
+    selected_label = st.sidebar.selectbox(
         "Choose your customer segment:",
-        options=[""] + segment_options,  # Add an empty option
+        options=label_options,
         index=0,
-        key="segment_selector"
+        key="segment_selector",
     )
 
-    # Instantiate the selected segment
-    if selected_segment_name and st.session_state.get('segment_name') != selected_segment_name:
-        SegmentClass = get_segment_class(selected_segment_name)
-        if SegmentClass:
-            st.session_state['segment'] = SegmentClass()
-            st.session_state['segment_name'] = selected_segment_name
-    elif not selected_segment_name:
-        st.session_state['segment'] = None
-        st.session_state['segment_name'] = "No segment selected"
+    # Resolve label back to segment ID
+    label_to_id = {v: k for k, v in SEGMENT_LABELS.items()}
+    selected_id = label_to_id.get(selected_label)
 
-    # Main panel rendering
-    if st.session_state.get('segment'):
-        st.session_state['segment'].render()
+    if selected_id:
+        handler = get_segment_handler(selected_id)
+        st.session_state["user_segment"] = selected_id
+        st.info(
+            f"**{handler.display_label}** — "
+            f"{len(handler.building_registry)} buildings · "
+            f"{len(handler.scenario_whitelist)} scenarios available"
+        )
     else:
-        st.title("Welcome to CrowAgent")
+        st.session_state["user_segment"] = None
+        st.title("Welcome to CrowAgent™")
         st.write("Please select a customer segment from the sidebar to begin.")
-
-    # A button to demonstrate a utility function
-    if st.button("Show Congratulations"):
-        show_congratulations()

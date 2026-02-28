@@ -182,7 +182,7 @@ python -c "
 from app.utils import _extract_uk_postcode, _safe_number, validate_gemini_key
 assert _extract_uk_postcode('RG1 2AB') == 'RG1 2AB'
 assert _safe_number('bad', 0.0) == 0.0
-ok, _ = validate_gemini_key('key\ninjection')
+ok, *_ = validate_gemini_key('key\ninjection')
 assert not ok
 print('utils OK')
 "
