@@ -684,7 +684,12 @@ _qp = st.query_params
 if "segment" in _qp:
     st.session_state.user_segment = _qp.get("segment")
 if "scenarios" in _qp:
-    _qp_scenarios = [s.strip() for s in str(_qp.get("scenarios", "")).split(",") if s.strip()]
+    _qp_seg = st.session_state.get("user_segment")
+    _qp_valid_opts = set(_segment_scenario_options(_qp_seg))
+    _qp_scenarios = [
+        s.strip() for s in str(_qp.get("scenarios", "")).split(",")
+        if s.strip() and s.strip() in _qp_valid_opts
+    ]
     if _qp_scenarios:
         st.session_state.selected_scenario_names = _qp_scenarios
 
@@ -722,7 +727,7 @@ if "wx_enable_fallback" not in st.session_state:
 if "owm_key" not in st.session_state:
     st.session_state.owm_key = ""
 if "epc_api_key" not in st.session_state:
-    st.session_state.epc_api_key = ""
+    st.session_state.epc_api_key = _get_secret(EPC_API_KEY_ENV, "")
 if "epc_api_url" not in st.session_state:
     st.session_state.epc_api_url = _get_secret("EPC_API_URL", "https://epc.opendatacommunities.org/api/v1")
 if "energy_tariff_gbp_per_kwh" not in st.session_state:
@@ -861,19 +866,26 @@ with st.sidebar:
     st.markdown("<div class='sb-section'>🧪 Scenarios</div>", unsafe_allow_html=True)
     st.caption("Select one or more intervention scenarios to compare outcomes.")
     _scenario_options = _segment_scenario_options(st.session_state.user_segment)
-    _scenario_defaults = [
-        s for s in st.session_state.get("selected_scenario_names", _segment_default_scenarios(st.session_state.user_segment))
-        if s in _scenario_options
-    ] or _segment_default_scenarios(st.session_state.user_segment)
-    _chosen = st.multiselect(
+
+    # Validate stored selection against current segment options (pre-widget assignment is OK in Streamlit)
+    _current_selection = st.session_state.get("selected_scenario_names") or []
+    _valid_selection = [s for s in _current_selection if s in _scenario_options]
+    st.session_state["selected_scenario_names"] = _valid_selection or _segment_default_scenarios(st.session_state.user_segment)
+
+    def _on_scenario_change():
+        """Restore defaults if user deselects everything (called before next rerun)."""
+        if not st.session_state.get("selected_scenario_names"):
+            st.session_state["selected_scenario_names"] = _segment_default_scenarios(
+                st.session_state.get("user_segment")
+            )
+
+    st.multiselect(
         "Scenario selection",
         options=_scenario_options,
-        default=_scenario_defaults,
         key="selected_scenario_names",
         help="Choose one or more intervention scenarios for calculations.",
+        on_change=_on_scenario_change,
     )
-    if not _chosen:
-        st.session_state.selected_scenario_names = _segment_default_scenarios(st.session_state.user_segment)
     _update_location_query_params()
 
     st.markdown("---")
@@ -888,15 +900,23 @@ with st.sidebar:
 
     _addr_query = st.text_input(
         "Enter UK postcode",
-        help="Enter a postcode, then pick the exact property from the returned addresses.",
+        help="Enter a full UK postcode (e.g. RG1 6SP) — addresses will appear below once the postcode is recognised.",
         key="asset_lookup_query",
         placeholder="e.g. RG1 6SP",
     )
     _postcode_query = _extract_uk_postcode(_addr_query)
-    if _postcode_query:
-        st.session_state["asset_lookup_results"] = search_addresses(_postcode_query, limit=12)
-    else:
+    # Only call the API when the postcode actually changes, not on every Streamlit rerun
+    if _postcode_query and _postcode_query != st.session_state.get("_last_postcode_searched"):
+        with st.spinner("Searching addresses…"):
+            _results = search_addresses(_postcode_query, limit=12)
+        # If no addresses returned from API, offer the bare postcode as a fallback option
+        if not _results:
+            _results = [{"label": f"{_postcode_query.upper()} (postcode only)", "lat": 0.0, "lon": 0.0, "postcode": _postcode_query.upper()}]
+        st.session_state["asset_lookup_results"] = _results
+        st.session_state["_last_postcode_searched"] = _postcode_query
+    elif not _postcode_query:
         st.session_state["asset_lookup_results"] = []
+        st.session_state["_last_postcode_searched"] = ""
 
     _addr_options = st.session_state.get("asset_lookup_results", [])
     _addr_labels = [o["label"] for o in _addr_options]
