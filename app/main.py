@@ -900,33 +900,37 @@ with st.sidebar:
     st.caption("Select one or more intervention scenarios to compare outcomes.")
     _scenario_options = _segment_scenario_options(st.session_state.user_segment)
 
-    # Compute a valid default without writing to the widget-owned key.
-    # Writing st.session_state[widget_key] = ... in the main script body after
-    # the widget has been rendered in a previous run raises StreamlitAPIException.
     _current_selection = st.session_state.get("selected_scenario_names") or []
     _valid_selection = [s for s in _current_selection if s in _scenario_options]
     _default_selection = _valid_selection or _segment_default_scenarios(st.session_state.user_segment)
+    if not _default_selection:
+        _default_selection = _scenario_options[:1]
 
-    # Only pop the key when the whole selection has become invalid (e.g. after a
-    # segment switch), so the widget re-initialises from the default parameter.
-    if _current_selection and not _valid_selection:
-        st.session_state.pop("selected_scenario_names", None)
-
-    def _on_scenario_change():
-        """Restore defaults if user deselects everything (callbacks may write widget keys)."""
-        if not st.session_state.get("selected_scenario_names"):
-            st.session_state["selected_scenario_names"] = _segment_default_scenarios(
-                st.session_state.get("user_segment")
-            )
-
-    st.multiselect(
-        "Scenario selection",
-        options=_scenario_options,
-        default=_default_selection,
-        key="selected_scenario_names",
-        help="Choose one or more intervention scenarios for calculations.",
-        on_change=_on_scenario_change,
+    _scenario_keys = {
+        name: f"scenario_toggle_{hashlib.md5(name.encode()).hexdigest()[:10]}"
+        for name in _scenario_options
+    }
+    _scenario_options_signature = "|".join(_scenario_options)
+    _scenario_options_changed = (
+        st.session_state.get("_scenario_options_signature") != _scenario_options_signature
     )
+    st.session_state["_scenario_options_signature"] = _scenario_options_signature
+
+    for _name in _scenario_options:
+        _k = _scenario_keys[_name]
+        if _k not in st.session_state or _scenario_options_changed:
+            st.session_state[_k] = _name in _default_selection
+
+    _checked_names: list[str] = []
+    for _name in _scenario_options:
+        if st.checkbox(_name, key=_scenario_keys[_name]):
+            _checked_names.append(_name)
+
+    if not _checked_names:
+        _checked_names = _default_selection
+        st.caption("At least one scenario is required; using the segment default.")
+
+    st.session_state.selected_scenario_names = _checked_names
     _update_location_query_params()
 
     st.markdown("---")
