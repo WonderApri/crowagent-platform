@@ -48,7 +48,6 @@ import services.audit as audit
 from services.epc import EPC_API_KEY_ENV, EPC_API_URL_ENV, fetch_epc_data, search_addresses
 import core.agent as crow_agent
 import core.physics as physics
-from app.visualization_3d import render_campus_3d_map
 from app.utils import validate_gemini_key
 import app.compliance as compliance
 
@@ -406,8 +405,24 @@ def _segment_default_scenarios(segment: str | None) -> list[str]:
 # ─────────────────────────────────────────────────────────────────────────────
 # PORTFOLIO ARRAY LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
-MAX_PORTFOLIO_SIZE = 10
+MAX_PORTFOLIO_SIZE = 3
 MAX_ACTIVE_ANALYSIS_BUILDINGS = 3
+
+
+def _comparison_scenario_name() -> str:
+    """Pick the scenario used for baseline-vs-intervention portfolio comparisons."""
+    baseline_key = "Baseline (No Intervention)"
+    valid_segment_scenarios = set(_segment_scenario_options(st.session_state.get("user_segment")))
+    selected_names = [
+        name
+        for name in st.session_state.get("selected_scenario_names", [])
+        if name in valid_segment_scenarios and name != baseline_key
+    ]
+    if "Combined Package (All Interventions)" in selected_names:
+        return "Combined Package (All Interventions)"
+    if selected_names:
+        return selected_names[0]
+    return baseline_key
 
 def _extract_uk_postcode(text: str) -> str:
     """Extract a likely UK postcode token from free-form address text."""
@@ -594,8 +609,7 @@ def _hydrate_portfolio_results(portfolio: list[dict], weather_data: dict) -> tup
     errors: list[str] = []
 
     baseline_key = "Baseline (No Intervention)"
-    selected_names = [n for n in st.session_state.get("selected_scenario_names", []) if n in SCENARIOS and n != baseline_key]
-    combined_key = selected_names[0] if selected_names else "Combined Package (All Interventions)"
+    comparison_key = _comparison_scenario_name()
 
     for idx, entry in enumerate(portfolio):
         try:
@@ -621,16 +635,18 @@ def _hydrate_portfolio_results(portfolio: list[dict], weather_data: dict) -> tup
                     )
                     updated += 1
 
-            if "scenario_energy_mwh" not in entry["combined_results"]:
-                combined_scenario = SCENARIOS.get(combined_key)
-                if not isinstance(combined_scenario, dict):
-                    errors.append(f"Combined scenario unavailable for asset {idx + 1}.")
+            scenario_changed = entry.get("combined_scenario_name") != comparison_key
+            if "scenario_energy_mwh" not in entry["combined_results"] or scenario_changed:
+                comparison_scenario = SCENARIOS.get(comparison_key)
+                if not isinstance(comparison_scenario, dict):
+                    errors.append(f"Comparison scenario unavailable for asset {idx + 1}.")
                 else:
                     entry["combined_results"] = calculate_thermal_load(
                         model_input,
-                        combined_scenario,
+                        comparison_scenario,
                         weather_data,
                     )
+                    entry["combined_scenario_name"] = comparison_key
                     updated += 1
 
         except Exception as exc:
@@ -682,11 +698,11 @@ if "chat_history" not in st.session_state:
 if "agent_history" not in st.session_state:
     st.session_state.agent_history = []
 if "gemini_key" not in st.session_state:
-    st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
+    st.session_state.gemini_key = ""
 if "gemini_key_valid" not in st.session_state:
     st.session_state.gemini_key_valid = False
 if "met_office_key" not in st.session_state:
-    st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
+    st.session_state.met_office_key = ""
 if "manual_temp" not in st.session_state:
     st.session_state.manual_temp = 10.5
 if "force_weather_refresh" not in st.session_state:
@@ -704,9 +720,9 @@ if "wx_provider" not in st.session_state:
 if "wx_enable_fallback" not in st.session_state:
     st.session_state.wx_enable_fallback = True
 if "owm_key" not in st.session_state:
-    st.session_state.owm_key = _get_secret("OWM_KEY", "")
+    st.session_state.owm_key = ""
 if "epc_api_key" not in st.session_state:
-    st.session_state.epc_api_key = _get_secret("EPC_API_KEY", "")
+    st.session_state.epc_api_key = ""
 if "epc_api_url" not in st.session_state:
     st.session_state.epc_api_url = _get_secret("EPC_API_URL", "https://epc.opendatacommunities.org/api/v1")
 if "energy_tariff_gbp_per_kwh" not in st.session_state:
@@ -847,7 +863,7 @@ with st.sidebar:
     _scenario_options = _segment_scenario_options(st.session_state.user_segment)
     _scenario_defaults = [
         s for s in st.session_state.get("selected_scenario_names", _segment_default_scenarios(st.session_state.user_segment))
-        if s in SCENARIOS
+        if s in _scenario_options
     ] or _segment_default_scenarios(st.session_state.user_segment)
     _chosen = st.multiselect(
         "Scenario selection",
@@ -866,18 +882,19 @@ with st.sidebar:
     st.markdown("<div class='sb-section'>🏢 Asset Portfolio</div>", unsafe_allow_html=True)
     _seg_portfolio = _segment_portfolio()
     st.markdown(
-        f"<div style='font-size:0.78rem; color:#CFE6F6; font-weight:600;'>{len(_seg_portfolio)} / {MAX_PORTFOLIO_SIZE} Saved · Select 1 to {MAX_ACTIVE_ANALYSIS_BUILDINGS} for analysis</div>",
+        f"<div style='font-size:0.78rem; color:#EAF4FF; font-weight:700;'>{len(_seg_portfolio)} / {MAX_PORTFOLIO_SIZE} assets added · Analysis requires at least 1 (up to {MAX_ACTIVE_ANALYSIS_BUILDINGS})</div>",
         unsafe_allow_html=True,
     )
 
     _addr_query = st.text_input(
-        "Find UK address or postcode",
-        help="Search by postcode or a full UK address, then choose one result.",
+        "Enter UK postcode",
+        help="Enter a postcode, then pick the exact property from the returned addresses.",
         key="asset_lookup_query",
-        placeholder="e.g. RG1 6SP or 10 Downing Street",
+        placeholder="e.g. RG1 6SP",
     )
-    if len(_addr_query.strip()) >= 3:
-        st.session_state["asset_lookup_results"] = search_addresses(_addr_query, limit=12)
+    _postcode_query = _extract_uk_postcode(_addr_query)
+    if _postcode_query:
+        st.session_state["asset_lookup_results"] = search_addresses(_postcode_query, limit=12)
     else:
         st.session_state["asset_lookup_results"] = []
 
@@ -891,7 +908,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-    if st.button("➕ Add Selected Asset", width="stretch"):
+    if st.button("➕ Add Selected Address", width="stretch"):
         chosen = next((o for o in _addr_options if o["label"] == _addr_pick), None)
         if not chosen:
             st.warning("Choose an address from the picker first.")
@@ -936,74 +953,18 @@ with st.sidebar:
         st.markdown("<div style='font-size:0.83rem; color:#CFE6F6; background:#0D2640; border:1px dashed #2E5573; border-radius:8px; padding:10px; line-height:1.45;'>No assets for this segment yet. Add at least one UK address to begin analysis.</div>", unsafe_allow_html=True)
 
     st.markdown("---")
-# ── Location picker ────────────────────────────────────────────────────────
-    st.markdown("<div class='sb-section'>📍 Location</div>", unsafe_allow_html=True)
 
-    _city_list = loc.city_options()
-    _city_idx  = _city_list.index(st.session_state.wx_city) if st.session_state.wx_city in _city_list else 0
-    _sel_city  = st.selectbox(
-        "City / Region", _city_list, index=_city_idx,
-        label_visibility="collapsed",
-    )
+    _active_assets_for_weather = _active_portfolio_entries()
+    if _active_assets_for_weather:
+        _primary_asset = _active_assets_for_weather[0]
+        _asset_lat = _primary_asset.get("lat")
+        _asset_lon = _primary_asset.get("lon")
+        if _asset_lat is not None and _asset_lon is not None:
+            st.session_state.wx_lat = float(_asset_lat)
+            st.session_state.wx_lon = float(_asset_lon)
+            st.session_state.wx_location_name = f"Portfolio asset: {_primary_asset.get('postcode', 'Unknown postcode')}"
 
-    if _sel_city != st.session_state.wx_city:
-        _meta = loc.city_meta(_sel_city)
-        st.session_state.wx_city          = _sel_city
-        st.session_state.wx_lat           = _meta["lat"]
-        st.session_state.wx_lon           = _meta["lon"]
-        st.session_state.wx_location_name = f"{_sel_city}, {_meta['country']}"
-        st.session_state.force_weather_refresh = True
-        audit.log_event("LOCATION_CHANGED", f"City set to '{_sel_city}'")
-        _update_location_query_params()
-
-    # Manual lat/lon entry (for precise site addresses)
-    with st.expander("⚙ Custom coordinates", expanded=False):
-        _col_lat, _col_lon = st.columns(2)
-        with _col_lat:
-            _custom_lat = st.number_input(
-                "Latitude", value=float(st.session_state.wx_lat),
-                min_value=-90.0, max_value=90.0, format="%.4f", step=0.0001,
-            )
-        with _col_lon:
-            _custom_lon = st.number_input(
-                "Longitude", value=float(st.session_state.wx_lon),
-                min_value=-180.0, max_value=180.0, format="%.4f", step=0.0001,
-            )
-        if st.button("Apply coordinates", key="apply_coords", width="stretch"):
-            st.session_state.wx_lat           = _custom_lat
-            st.session_state.wx_lon           = _custom_lon
-            st.session_state.wx_location_name = f"Custom site ({_custom_lat:.4f}, {_custom_lon:.4f})"
-            st.session_state.force_weather_refresh = True
-            audit.log_event(
-                "LOCATION_CUSTOM",
-                f"Custom coordinates set: {_custom_lat:.4f}, {_custom_lon:.4f}",
-            )
-            _update_location_query_params()
-        
-        st.markdown(
-            "<div style='font-size:0.73rem;color:#8FBCCE;margin-top:4px;'>"
-            "Or use browser geolocation (HTTPS only):</div>",
-            unsafe_allow_html=True,
-        )
-        
-    _geo = loc.render_geo_detect()
-    if _geo and isinstance(_geo, dict):
-        try:
-            _lat = float(_geo.get("lat"))
-            _lon = float(_geo.get("lon"))
-            _resolved = loc.nearest_city(_lat, _lon)
-            st.session_state.wx_city          = _resolved
-            st.session_state.wx_lat           = _lat
-            st.session_state.wx_lon           = _lon
-            st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
-            st.session_state.force_weather_refresh = True
-            audit.log_event(
-                "LOCATION_AUTO_DETECTED",
-                f"Resolved browser location to '{_resolved}' (coords retained until ref.)",
-            )
-            _update_location_query_params()
-        except Exception:
-            pass
+    st.caption("Weather context is automatically tied to your first active portfolio asset when coordinates are available.")
 
     st.markdown("---")
 
@@ -1086,20 +1047,33 @@ with st.sidebar:
     # ── API Keys & Weather Config (collapsible) ───────────────────────────────
     with st.expander("🔑 API Keys & Weather Config", expanded=False):
         st.markdown(
-            "<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'>"
-            "<div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div>"
-            "<div style='font-size:0.78rem;color:#664D03;line-height:1.5;'>"
+            "<div style='font-size:0.84rem;color:#0B2A47;font-weight:800;letter-spacing:0.4px;margin-bottom:8px;'>🔑 API Keys & Weather Config</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<div style='background:#FFF3CD;border:1px solid #E8B35D;border-radius:6px;padding:10px;'>"
+            "<div style='font-size:0.80rem;color:#4A2F00;font-weight:800;margin-bottom:6px;'>🔒 Security Notice</div>"
+            "<div style='font-size:0.80rem;color:#4A2F00;line-height:1.55;'>"
             "• Keys exist in your session only (cleared on browser close)<br/>"
-            "• Your keys are <strong>never</strong> stored on the server<br/>"
-            "• Each user enters their own key independently<br/>"
+            "• Keys are not committed to source control by this app<br/>"
+            "• Each user should enter their own key independently<br/>"
             "• Use unique, disposable API keys if sharing this link"
             "</div></div>",
             unsafe_allow_html=True,
         )
-        
+
+        if st.button("Clear all key fields", key="clear_all_keys_btn", width="stretch"):
+            st.session_state.owm_key = ""
+            st.session_state.met_office_key = ""
+            st.session_state.epc_api_key = ""
+            st.session_state.gemini_key = ""
+            st.session_state.gemini_key_valid = False
+            audit.log_event("KEYS_CLEARED", "All API key fields cleared by user")
+            st.rerun()
+
         st.markdown("")  # spacing
         st.markdown("""
-<div style='font-size:0.88rem;color:#DCEBF8;margin-bottom:8px;line-height:1.5;'>
+<div style='font-size:0.88rem;color:#0B2A47;margin-bottom:8px;line-height:1.55;font-weight:600;'>
 Provide your own API keys — do not use shared or public keys. 
 Met Office DataPoint (free): register at 
 <a href="https://www.metoffice.gov.uk/services/data/datapoint" target="_blank">metoffice.gov.uk/services/data/datapoint</a>. 
@@ -1113,7 +1087,7 @@ Gemini API key (for AI Advisor): get one at
 
         # ── Weather Provider selector ─────────────────────────────────────────
         st.markdown(
-            "<div style='font-size:0.80rem;color:#DCEBF8;font-weight:700;"
+            "<div style='font-size:0.80rem;color:#0B2A47;font-weight:800;"
             "letter-spacing:0.5px;margin:8px 0 4px;'>WEATHER PROVIDER</div>",
             unsafe_allow_html=True,
         )
@@ -1317,26 +1291,28 @@ Gemini API key (for AI Advisor): get one at
 # COMPUTE ALL SELECTED SCENARIOS
 # ─────────────────────────────────────────────────────────────────────────────
 _active_buildings = _portfolio_buildings_map()
-if not _active_buildings:
-    if st.session_state.user_segment == "university_he":
-        _active_buildings = dict(BUILDINGS)
-    else:
-        _active_buildings = dict(compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {}))
-        if _active_buildings:
-            st.info("No portfolio assets selected yet — showing segment example asset data. Add your address to replace this preview.")
+has_active_buildings = bool(_active_buildings)
 
-if not _active_buildings:
-    _active_buildings = dict(BUILDINGS)
-
-if "selected_building_name" not in st.session_state or \
-   st.session_state.selected_building_name not in _active_buildings:
-    st.session_state.selected_building_name = next(iter(_active_buildings))
-selected_building_name = st.session_state.selected_building_name
-selected_building = _active_buildings.get(selected_building_name)
-if selected_building is None:
-    selected_building_name = next(iter(_active_buildings))
-    st.session_state.selected_building_name = selected_building_name
-    selected_building = _active_buildings[selected_building_name]
+selected_building_name = st.session_state.get("selected_building_name")
+if has_active_buildings:
+    if not selected_building_name or selected_building_name not in _active_buildings:
+        selected_building_name = next(iter(_active_buildings))
+        st.session_state.selected_building_name = selected_building_name
+    selected_building = _active_buildings.get(selected_building_name)
+else:
+    selected_building_name = "No portfolio asset selected"
+    selected_building = {
+        "description": "Add at least one building to your current segment portfolio to unlock analysis.",
+        "built_year": "—",
+        "floor_area_m2": 0,
+        "height_m": 0,
+        "glazing_ratio": 0,
+        "occupancy_hours": 0,
+        "u_value_wall": 0,
+        "u_value_roof": 0,
+        "u_value_glazing": 0,
+        "baseline_energy_mwh": 0,
+    }
 
 _valid_scenario_names = _segment_scenario_options(st.session_state.user_segment)
 _default_scenarios = _segment_default_scenarios(st.session_state.user_segment)
@@ -1347,7 +1323,7 @@ if "selected_scenario_names" not in st.session_state:
     ] or _valid_scenario_names[:1]
 
 selected_scenario_names = [
-    s for s in st.session_state.selected_scenario_names if s in SCENARIOS
+    s for s in st.session_state.selected_scenario_names if s in _valid_scenario_names
 ]
 if not selected_scenario_names:
     selected_scenario_names = [
@@ -1359,6 +1335,8 @@ results: dict[str, dict] = {}
 _compute_errors: list[str] = []
 
 for _sn in selected_scenario_names:
+    if not has_active_buildings:
+        continue
     try:
         results[_sn] = calculate_thermal_load(selected_building, SCENARIOS[_sn], weather)
     except Exception as _e:
@@ -1646,12 +1624,21 @@ with _tab_dash:
             "without site-specific survey."
         )
 
-    # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
+    # ── Portfolio Map (2D) ───────────────────────────────────────────────────
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-    render_campus_3d_map(
-        selected_scenario_names=selected_scenario_names,
-        weather=weather,
-    )
+    st.markdown("<div class='sec-hdr'>🗺️ Portfolio Map</div>", unsafe_allow_html=True)
+    _dash_assets = _active_portfolio_entries()
+    _map_rows = [
+        {"postcode": p.get("postcode", "Unknown"), "lat": p.get("lat"), "lon": p.get("lon")}
+        for p in _dash_assets
+        if p.get("lat") is not None and p.get("lon") is not None
+    ]
+    if _map_rows:
+        _map_df = pd.DataFrame(_map_rows)
+        st.map(_map_df[["lat", "lon"]], width="stretch")
+        st.dataframe(_map_df[["postcode"]], width="stretch", hide_index=True)
+    else:
+        st.info("Add portfolio assets with geocoded addresses to display pins on the map.")
 
 
 # ════════════════════════════════════════════════════════════════════════════
