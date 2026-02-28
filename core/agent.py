@@ -15,6 +15,14 @@ import json
 import requests
 from typing import Any
 
+from config.constants import (
+    CI_ELECTRICITY,
+    DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
+    HEATING_SETPOINT_C,
+    HEATING_HOURS_PER_YEAR,
+    SOLAR_IRRADIANCE_KWH_M2_YEAR,
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # API & MODEL CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -26,12 +34,12 @@ MAX_AGENT_LOOPS      = 10
 # SYSTEM PROMPT
 # The agent's identity, knowledge, and behavioural rules
 # ─────────────────────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """You are the CrowAgent™ AI Advisor — an expert sustainability \
+SYSTEM_PROMPT = f"""You are the CrowAgent™ AI Advisor — an expert sustainability \
 engineer embedded inside the CrowAgent™ Platform, a physics-informed campus \
 thermal intelligence system.
 
 YOUR ROLE:
-You help university estate managers make evidence-based, cost-effective \
+You help estate managers make evidence-based, cost-effective \
 sustainability investment decisions. You reason about buildings, run \
 physics simulations using your tools, and translate technical outputs \
 into clear, actionable recommendations.
@@ -44,11 +52,11 @@ YOUR TOOLS — use them proactively, do not just answer from memory:
 • rank_all_scenarios: Rank every intervention for a building by a chosen metric
 
 PHYSICS CONSTANTS (cite these in your answers):
-• Carbon intensity: 0.20482 kgCO₂e/kWh (BEIS 2023)
-• UK HE electricity cost: £0.28/kWh (HESA 2022-23)
-• Heating set-point: 21°C (UK Building Regulations Part L)
-• Heating season: 5,800 hours/yr (CIBSE Guide A)
-• Solar irradiance (Reading): 950 kWh/m²/yr (PVGIS)
+• Carbon intensity: {CI_ELECTRICITY} kgCO₂e/kWh (BEIS 2023)
+• UK electricity cost: £{DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH}/kWh (HESA 2022-23)
+• Heating set-point: {HEATING_SETPOINT_C}°C (UK Building Regulations Part L)
+• Heating season: {HEATING_HOURS_PER_YEAR:,.0f} hours/yr (CIBSE Guide A)
+• Solar irradiance (Reading): {SOLAR_IRRADIANCE_KWH_M2_YEAR:,.0f} kWh/m²/yr (PVGIS)
 
 BEHAVIOUR RULES:
 1. ALWAYS use tools to get real numbers — never invent figures
@@ -97,8 +105,8 @@ TOOL_DECLARATIONS = [
                 "building_name": {
                     "type": "string",
                     "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
+                        "Name of the building to analyse. "
+                        "Available buildings depend on the active user segment."
                     ),
                 },
                 "scenario_name": {
@@ -176,8 +184,8 @@ TOOL_DECLARATIONS = [
                 "building_name": {
                     "type": "string",
                     "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
+                        "Name of the building to retrieve. "
+                        "Available buildings depend on the active user segment."
                     ),
                 },
             },
@@ -196,8 +204,8 @@ TOOL_DECLARATIONS = [
                 "building_name": {
                     "type": "string",
                     "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
+                        "Name of the building to rank scenarios for. "
+                        "Available buildings depend on the active user segment."
                     ),
                 },
                 "rank_by": {
@@ -219,6 +227,9 @@ TOOL_DECLARATIONS = [
         },
     },
 ]
+
+# Canonical name per ADD Task 007
+AGENT_TOOLS: list[dict] = TOOL_DECLARATIONS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -337,7 +348,7 @@ def execute_tool(
         if bname not in buildings:
             return {"error": f"Building '{bname}' not found."}
         b = buildings[bname]
-        baseline_carbon = round(b["baseline_energy_mwh"] * 1000 * 0.20482 / 1000, 1)
+        baseline_carbon = round(b["baseline_energy_mwh"] * 1000 * CI_ELECTRICITY / 1000, 1)
         return {
             "building":              bname,
             "floor_area_m2":         b["floor_area_m2"],
@@ -348,7 +359,7 @@ def execute_tool(
             "u_value_glazing_wm2k":  b["u_value_glazing"],
             "baseline_energy_mwh":   b["baseline_energy_mwh"],
             "baseline_carbon_t_co2": baseline_carbon,
-            "baseline_cost_gbp_yr":  round(b["baseline_energy_mwh"] * 1000 * 0.28, 0),
+            "baseline_cost_gbp_yr":  round(b["baseline_energy_mwh"] * 1000 * DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH, 0),
             "occupancy_hours_yr":    b["occupancy_hours"],
             "built_year":            b["built_year"],
             "description":           b["description"],
@@ -459,17 +470,26 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
 # AGENTIC LOOP
 # Think → Call tools → Observe results → Think again → Final answer
 # ─────────────────────────────────────────────────────────────────────────────
-def run_agent(
-    api_key: str,
+def run_agent_turn(
     user_message: str,
     conversation_history: list,
-    buildings: dict,
-    scenarios: dict,
+    api_key: str,
+    building_registry: dict,
+    scenario_registry: dict,
     calculate_fn,
     current_context: dict | None = None,
 ) -> dict:
     """
     Run the full agentic loop for one user turn.
+
+    Args:
+        user_message:        The user's latest message.
+        conversation_history: Prior Gemini message list (role/parts dicts).
+        api_key:             Gemini API key.
+        building_registry:   Dict of building name → spec dict for the active segment.
+        scenario_registry:   Dict of scenario name → params dict.
+        calculate_fn:        Physics calculation callable (core.physics.calculate_thermal_load).
+        current_context:     Optional dashboard state dict injected as context.
 
     Returns:
         {
@@ -477,6 +497,7 @@ def run_agent(
           "tool_calls": list,      # list of {name, args, result} dicts
           "error": str | None,     # error message if something failed
           "loops": int,            # how many iterations the agent took
+          "updated_history": list, # conversation history including this turn
         }
     """
     # Build the working message list for this turn
@@ -546,7 +567,7 @@ def run_agent(
 
                 # Execute the tool
                 result = execute_tool(
-                    name, fargs, buildings, scenarios, calculate_fn
+                    name, fargs, building_registry, scenario_registry, calculate_fn
                 )
                 tool_calls_log.append({
                     "name": name,
@@ -633,3 +654,6 @@ STARTER_QUESTIONS = [
     "Which single intervention gives the best cost per tonne of CO₂?",
     "If energy prices rise to £0.40/kWh, does that change the best option?",
 ]
+
+# Backward-compatibility alias — remove when all Batch 5 call sites are updated
+run_agent = run_agent_turn
