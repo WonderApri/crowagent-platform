@@ -47,7 +47,7 @@ YOUR TOOLS — use them proactively, do not just answer from memory:
 • rank_all_scenarios: Rank every intervention for a building by a chosen metric
 
 PHYSICS CONSTANTS (cite these in your answers):
-• Carbon intensity: {constants.GRID_CARBON_INTENSITY_KG_PER_KWH} kgCO₂e/kWh (BEIS 2023)
+• Carbon intensity: {constants.CI_ELECTRICITY} kgCO₂e/kWh (BEIS 2023)
 • UK HE electricity cost: £{constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH}/kWh (HESA 2022-23)
 • Heating set-point: {constants.HEATING_SETPOINT_C}°C (UK Building Regulations Part L)
 • Heating season: {constants.HEATING_HOURS_PER_YEAR} hours/yr (CIBSE Guide A)
@@ -341,7 +341,7 @@ def execute_tool(
         if bname not in buildings:
             return {"error": f"Building '{bname}' not found."}
         b = buildings[bname]
-        baseline_carbon = round(b["baseline_energy_mwh"] * 1000 * constants.GRID_CARBON_INTENSITY_KG_PER_KWH / 1000, 1)
+        baseline_carbon = round(b["baseline_energy_mwh"] * 1000 * constants.CI_ELECTRICITY / 1000, 1)
         return {
             "building":              bname,
             "floor_area_m2":         b["floor_area_m2"],
@@ -565,7 +565,7 @@ def run_agent_turn(
 
             # Add function results back into the conversation
             messages.append({
-                "role": "user",
+                "role": "function",
                 "parts": function_results,
             })
             # Loop continues — agent sees results and decides next step
