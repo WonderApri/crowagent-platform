@@ -14,11 +14,16 @@ from __future__ import annotations
 
 import math
 import requests
+import html
 from typing import Dict, List
 
 import overpy
 import pandas as pd
 import streamlit as st
+
+from config.constants import CI_ELECTRICITY, ELEC_COST_PER_KWH, HEATING_SETPOINT_C
+from config.scenarios import SCENARIOS
+from app.segments import get_segment_handler
 
 try:
     import pydeck as pdk
@@ -60,12 +65,12 @@ _MONTH_NAMES: List[str] = [
 # The remaining 40% (lighting, equipment, hot water) is roughly flat year-round.
 # Heating load scales with heating degree days vs. the annual average.
 _HEATING_FRACTION = 0.60
-_UK_ANNUAL_AVG_TEMP_C = 11.0   # °C — UK annual mean (Met Office 1991–2020)
-_SETPOINT_C = 21.0             # Part L heating set-point
+_UK_ANNUAL_AVG_TEMP_C = 11.0    # °C — UK annual mean (Met Office 1991–2020)
+_SETPOINT_C = HEATING_SETPOINT_C  # Part L heating set-point
 
 # ── Emissions & cost constants ────────────────────────────────────────────────
-_CI               = 0.20482   # kgCO₂e/kWh  (BEIS 2023 grid intensity)
-_ELEC_GBP_PER_KWH = 0.28      # £/kWh        (HESA 2022-23 HE sector average)
+_CI               = CI_ELECTRICITY    # kgCO₂e/kWh  (BEIS 2023 grid intensity)
+_ELEC_GBP_PER_KWH = ELEC_COST_PER_KWH # £/kWh        (HESA 2022-23 HE sector average)
 
 # ── Building display icons ────────────────────────────────────────────────────
 _BUILDING_ICONS: dict[str, str] = {
@@ -86,7 +91,7 @@ def _get_map_center() -> tuple[float, float, str]:
     return float(lat), float(lon), str(name)
 
 
-def _building_coords(center_lat: float, center_lon: float) -> dict[str, dict]:
+def _building_coords(center_lat: float, center_lon: float, building_names: list[str] = None) -> dict[str, dict]:
     """Compute absolute lat/lon for each fictional campus building.
 
     Offsets in ``_BUILDING_OFFSETS`` (metres) are converted to degrees
@@ -94,7 +99,18 @@ def _building_coords(center_lat: float, center_lon: float) -> dict[str, dict]:
     """
     cos_lat = math.cos(math.radians(center_lat))
     result: dict[str, dict] = {}
-    for bname, (north_m, east_m) in _BUILDING_OFFSETS.items():
+    
+    # Use hardcoded offsets where available, otherwise generate synthetic layout
+    offsets = _BUILDING_OFFSETS.copy()
+    if building_names:
+        unknowns = [b for b in building_names if b not in offsets]
+        if unknowns:
+            radius, step = 150.0, 360.0 / len(unknowns)
+            for i, bname in enumerate(unknowns):
+                angle = math.radians(i * step)
+                offsets[bname] = (radius * math.cos(angle), radius * math.sin(angle))
+
+    for bname, (north_m, east_m) in offsets.items():
         result[bname] = {
             "lat": center_lat + north_m / 111_000.0,
             "lon": center_lon + east_m / (111_000.0 * cos_lat),
@@ -215,6 +231,7 @@ def _compute_all_buildings(
     weather: dict,
     center_lat: float,
     center_lon: float,
+    buildings: dict,
 ) -> list[dict]:
     """
     Run the physics engine for all campus buildings under *scenario_name*.
@@ -226,16 +243,16 @@ def _compute_all_buildings(
     Each row includes both baseline and scenario energy/carbon figures so the
     tooltip can show the full comparison in one hover card.
     """
-    from ..core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
+    from core.physics import calculate_thermal_load
 
     scenario_cfg = SCENARIOS.get(scenario_name)
     if scenario_cfg is None:
         return []
 
-    bcoords = _building_coords(center_lat, center_lon)
+    bcoords = _building_coords(center_lat, center_lon, list(buildings.keys()))
     rows: list[dict] = []
 
-    for bname, bdata in BUILDINGS.items():
+    for bname, bdata in buildings.items():
         coords = bcoords.get(bname)
         if coords is None:
             continue
@@ -249,8 +266,8 @@ def _compute_all_buildings(
 
         rows.append({
             # Identity
-            "name":                 bname,
-            "building_type":        bdata.get("building_type", "University Building"),
+            "name":                 html.escape(bname),
+            "building_type":        html.escape(bdata.get("building_type", "University Building")),
             "lat":                  coords["lat"],
             "lon":                  coords["lon"],
             # Scenario comparison — shown in tooltip
@@ -481,7 +498,7 @@ def _render_2d_fallback(rows: list[dict]) -> None:
         yaxis=dict(gridcolor="#1A3A5C", title="MWh/yr"),
         showlegend=False,
     )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption("2D fallback — 3D map requires a WebGL-capable browser (Chrome / Firefox)")
 
 
@@ -501,6 +518,7 @@ def _render_3d_map(
     osm_rows: list[dict] | None = None,
     road_rows: list[dict] | None = None,
     selected_building: str | None = None,
+    buildings: dict = None,
 ) -> None:
     """Render the Google Maps-style 3D digital twin on a light CARTO basemap.
 
@@ -511,7 +529,7 @@ def _render_3d_map(
     Polygon assignment (nearest-OSM matching) is cached in session_state per
     location so scenario changes and building selections do not re-hit OSM.
     """
-    rows = _compute_all_buildings(scenario_name, weather, center_lat, center_lon)
+    rows = _compute_all_buildings(scenario_name, weather, center_lat, center_lon, buildings or {})
     if not rows:
         st.info("No building data available for the selected scenario.")
         return
@@ -553,7 +571,7 @@ def _render_3d_map(
             selected_building=selected_building,
             map_style=_MAP_STYLE_LIGHT,
         )
-        st.pydeck_chart(deck, width="stretch")
+        st.pydeck_chart(deck, use_container_width=True)
     except Exception as exc:
         st.warning(f"3D map could not render ({exc}). Showing 2D fallback.")
         _render_2d_fallback(rows)
@@ -599,10 +617,18 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
     center_lat, center_lon, location_label = _get_map_center()
 
     # ── Section header ────────────────────────────────────────────────────────
+    # Resolve buildings for current segment
+    segment = st.session_state.get("user_segment", "university_he")
+    try:
+        buildings = get_segment_handler(segment).building_registry
+    except Exception:
+        buildings = {}
+
+    safe_location_label = html.escape(location_label)
     st.markdown(
         f"<div class='sec-hdr'>🗺️ 3D Campus Digital Twin"
         f"<span style='font-size:0.72rem;color:#5A7A90;font-weight:400;"
-        f"margin-left:12px;'>📍 {location_label}</span></div>",
+        f"margin-left:12px;'>📍 {safe_location_label}</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -614,6 +640,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
             placeholder="Enter postcode or place name — e.g. SW1A 1AA, Edinburgh, Tokyo…",
             key="viz3d_location_search",
             label_visibility="collapsed",
+            max_chars=60,
         )
     with btn_col:
         search_clicked = st.button("🔍 Search", key="viz3d_search_btn",
@@ -636,7 +663,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
                 st.session_state.viz3d_selected_building = None
                 st.rerun()
         else:
-            st.warning(f"Location '{search_query}' not found — try a different postcode or name.")
+            st.warning(f"Location '{html.escape(search_query)}' not found — try a different postcode or name.")
 
     # ── Scenario selector ─────────────────────────────────────────────────────
     scenario_for_map = st.selectbox(
@@ -682,6 +709,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         osm_rows=osm_rows,
         road_rows=road_rows,
         selected_building=selected_building,
+        buildings=buildings,
     )
 
     # ── Legend + attribution ──────────────────────────────────────────────────
@@ -721,7 +749,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         unsafe_allow_html=True,
     )
 
-    building_names = list(_BUILDING_OFFSETS.keys())
+    building_names = list(buildings.keys())
     card_cols = st.columns(len(building_names))
 
     for col, bname in zip(card_cols, building_names):
@@ -755,7 +783,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
             "<hr style='border-color:#1A3A5C;margin:12px 0 0;'/>",
             unsafe_allow_html=True,
         )
-        _render_building_info_panel(selected_building, selected_scenario_names, weather)
+        _render_building_info_panel(selected_building, selected_scenario_names, weather, buildings)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -767,6 +795,7 @@ def _render_building_info_panel(
     building_name: str,
     selected_scenario_names: list[str],
     weather: dict,
+    buildings: dict,
 ) -> None:
     """Render a Google Maps-style info card for the selected campus building.
 
@@ -776,9 +805,9 @@ def _render_building_info_panel(
     KPI strip    — 4 metrics: energy, carbon, cost, grid intensity
     Tabs         — 📋 Overview | 📅 Seasonal Energy | ⚡ Scenarios
     """
-    from ..core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
+    from core.physics import calculate_thermal_load
 
-    bdata  = BUILDINGS.get(building_name)
+    bdata  = buildings.get(building_name)
     if bdata is None:
         return
     _, _, location_label = _get_map_center()
@@ -786,6 +815,7 @@ def _render_building_info_panel(
     icon = _BUILDING_ICONS.get(building_name, "🏢")
 
     # ── Header card ───────────────────────────────────────────────────────────
+    safe_location_label = html.escape(location_label)
     st.markdown(
         f"""<div style='background:linear-gradient(135deg,#071A2F 0%,#0D2640 100%);
                         border-left:4px solid #FFD700;border-radius:8px;
@@ -794,7 +824,7 @@ def _render_building_info_panel(
     {icon} {building_name}
   </div>
   <div style='font-size:0.76rem;color:#8FBCCE;margin-top:3px;'>
-    📍 Greenfield Campus · {location_label}
+    📍 Greenfield Campus · {safe_location_label}
   </div>
   <div style='font-size:0.74rem;color:#5A7A90;margin-top:2px;'>
     {bdata.get("building_type","University building")} &nbsp;·&nbsp;
@@ -855,7 +885,7 @@ def _render_building_info_panel(
 
 def _info_tab_overview(bdata: dict, scenario_names: list[str], weather: dict) -> None:
     """Building specs + scenario comparison bar chart."""
-    from core.physics import SCENARIOS, calculate_thermal_load
+    from core.physics import calculate_thermal_load
     import plotly.graph_objects as go
 
     spec_l, spec_r = st.columns(2)
@@ -924,7 +954,7 @@ def _info_tab_overview(bdata: dict, scenario_names: list[str], weather: dict) ->
             yaxis=dict(gridcolor="#1A3A5C"),
             legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
         )
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def _info_tab_seasonal(bdata: dict) -> None:
@@ -961,7 +991,7 @@ def _info_tab_seasonal(bdata: dict) -> None:
                     gridcolor="rgba(0,0,0,0)"),
         legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
     )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     # Monthly cost grid — two rows of 6
     for row_months in [months[:6], months[6:]]:
@@ -980,7 +1010,7 @@ def _info_tab_scenarios(
     bdata: dict, scenario_names: list[str], weather: dict
 ) -> None:
     """Scenario comparison dataframe with energy, carbon, saving, cost, payback."""
-    from core.physics import SCENARIOS, calculate_thermal_load
+    from core.physics import calculate_thermal_load
 
     if not scenario_names:
         st.info("Select one or more scenarios in the sidebar to compare.")
@@ -1176,7 +1206,7 @@ def render_3d_energy_map(buildings_data: List[Dict]) -> None:
     try:
         st.pydeck_chart(
             _build_deck(rows, center_lat, center_lon),
-            width="stretch",
+            use_container_width=True,
         )
     except Exception as exc:
         st.warning(f"3D map failed: {exc}")

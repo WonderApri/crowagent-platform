@@ -7,6 +7,7 @@ from __future__ import annotations
 import streamlit as st
 import sys
 import os
+import logging
 
 # Ensure project root is in sys.path for absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -19,19 +20,8 @@ import app.session as session
 # ── Page config (must be first Streamlit call at module level) ──────────────
 st.set_page_config(**branding.PAGE_CONFIG)
 
-# ── KPI card component — defined BEFORE tab imports to prevent circular import
-def _card(label: str, value: str, subtext: str, accent_class: str = "") -> None:
-    """Renders a compact KPI card. Imported by tab modules as per spec."""
-    st.markdown(
-        f"""
-        <div class="kpi-card {accent_class}">
-            <div class="kpi-label">{label}</div>
-            <div class="kpi-value">{value}</div>
-            <div class="kpi-subtext">{subtext}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+# Re-export render_card as _card for compatibility if needed
+_card = branding.render_card
 
 import app.sidebar as sidebar
 from app.segments import get_segment_handler
@@ -52,6 +42,13 @@ def _resolve_query_params() -> None:
 
 # ── Main orchestrator ────────────────────────────────────────────────────────
 def run() -> None:
+    # Configure logging (CQ-004)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+
     branding.inject_branding()
     session.init_session()
     _resolve_query_params()
@@ -64,13 +61,45 @@ def run() -> None:
     handler = get_segment_handler(segment)
     portfolio = st.session_state.portfolio
 
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Financial Analysis", "🏛️ UK Compliance Hub"])
+    # Dynamic tab label for Compliance based on segment
+    compliance_label = {
+        "university_he": "🏛️ SECR & TCFD",
+        "smb_landlord": "🏛️ MEES & EPC",
+        "smb_industrial": "🏛️ SECR Carbon",
+        "individual_selfbuild": "🏛️ Part L & FHS",
+    }.get(segment, "🏛️ UK Compliance Hub")
+
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Financial Analysis", compliance_label])
     with tab1:
         tab_dashboard.render(handler, weather, portfolio)
     with tab2:
         tab_financial.render(handler, portfolio)
     with tab3:
         tab_compliance.render(handler, portfolio)
+
+    # ── Footer ───────────────────────────────────────────────────────────────
+    st.markdown(
+        f"""
+        <div class="ent-footer">
+            <img src="{branding.get_logo_uri()}" style="height: 28px; margin-bottom: 14px; opacity: 0.85;">
+            <div style="color: #CBD8E6; font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; letter-spacing: 0.5px;">
+                CrowAgent™ Sustainability AI Decision Intelligence Platform v2.0.0 · Working Prototype
+            </div>
+            <div style="color: #8AACBF; font-size: 0.8rem; margin-bottom: 16px; max-width: 700px; line-height: 1.6;">
+                ⚠️ <strong>Results Are Indicative Only.</strong> This platform uses simplified physics models calibrated against published UK higher education sector averages. 
+                Outputs should not be used as the sole basis for capital investment decisions. Consult a qualified energy surveyor before committing to any retrofit programme. 
+                Greenfield University is a fictional institution used for demonstration purposes. All data is illustrative.
+            </div>
+            <div style="color: #5A7A90; font-size: 0.75rem; margin-bottom: 8px;">
+                © 2026 Aparajita Parihar · All rights reserved · Independent research project · CrowAgent™ is an unregistered trademark (UK IPO Class 42, registration pending) · Not licensed for commercial use without written permission
+            </div>
+            <div style="color: #3A5268; font-size: 0.7rem; font-family: monospace; letter-spacing: -0.2px;">
+                Physics: Raissi et al. (2019) J. Comp. Physics · doi:10.1016/j.jcp.2018.10.045 · Weather: Open-Meteo API + Met Office DataPoint · Carbon: BEIS 2023 · Costs: HESA 2022-23 · AI: Google Gemini 1.5 Pro
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     run()

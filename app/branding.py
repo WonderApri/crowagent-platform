@@ -3,6 +3,8 @@ Handles all visual branding, including CSS, logos, and page configuration.
 """
 import streamlit as st
 import base64
+import html
+import logging
 from pathlib import Path
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -20,7 +22,7 @@ h1,h2,h3,h4 {
 }
 
 [data-testid="stAppViewContainer"] > .main { background: #F0F4F8; }
-.block-container { padding-top: 0 !important; max-width: 100% !important; }
+.block-container { padding-top: 0 !important; max-width: 1400px !important; margin: 0 auto !important; }
 
 [data-testid="stSidebar"] {
   background: #071A2F !important;
@@ -132,6 +134,8 @@ div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hi
 header { background: transparent !important; }
 """
 
+logger = logging.getLogger(__name__)
+
 
 def _load_asset_uri(filename: str) -> str:
     """
@@ -149,6 +153,7 @@ def _load_asset_uri(filename: str) -> str:
                 data = f.read()
             b64_data = base64.b64encode(data).decode("utf-8")
             return f"data:image/svg+xml;base64,{b64_data}"
+    logger.warning(f"Asset not found: {filename}. Searched in: {[str(p) for p in candidate_paths]}")
     return ""
 
 
@@ -167,6 +172,23 @@ def get_icon_uri() -> str:
 def inject_branding():
     """Injects custom CSS via a st.markdown call."""
     st.markdown(f"<style>{CROWAGENT_CSS}</style>", unsafe_allow_html=True)
+
+
+def render_card(label: str, value: str, subtext: str, accent_class: str = "") -> None:
+    """
+    Renders a compact KPI card.
+    Moved here from main.py to prevent circular imports with tab modules.
+    """
+    st.markdown(
+        f"""
+        <div class="kpi-card {accent_class}">
+            <div class="kpi-label">{html.escape(label)}</div>
+            <div class="kpi-value">{html.escape(value)}</div>
+            <div class="kpi-subtext">{html.escape(subtext)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # This dict is imported by main.py and passed to st.set_page_config()
