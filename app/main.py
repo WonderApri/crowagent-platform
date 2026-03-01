@@ -56,26 +56,57 @@ def run() -> None:
     segment, weather, location = sidebar.render_sidebar()
 
     if not segment:
-        return  # Onboarding gate is showing; stop here.
+        return # Onboarding gate handled inside render_onboarding
 
-    handler = get_segment_handler(segment)
+    # ── 1. Onboarding Gate ───────────────────────────────────────────────────
+    if sidebar.render_onboarding():
+        return
+
+    # ── 2. Minimal Sidebar (Mobile Friendly) ─────────────────────────────────
+    sidebar.render_minimal_sidebar()
+
+    # ── 3. Data Fetching ─────────────────────────────────────────────────────
+    weather = sidebar.get_weather_data()
+    handler = get_segment_handler(st.session_state.user_segment)
     portfolio = st.session_state.portfolio
 
-    # Dynamic tab label for Compliance based on segment
+    # ── 4. Main Layout (Tabs) ────────────────────────────────────────────────
+    # Dynamic label for Compliance based on segment
     compliance_label = {
         "university_he": "🏛️ SECR & TCFD",
         "smb_landlord": "🏛️ MEES & EPC",
         "smb_industrial": "🏛️ SECR Carbon",
         "individual_selfbuild": "🏛️ Part L & FHS",
-    }.get(segment, "🏛️ UK Compliance Hub")
+    }.get(st.session_state.user_segment, "🏛️ Compliance")
 
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Financial Analysis", compliance_label])
-    with tab1:
+    # Define Tabs
+    tabs = st.tabs([
+        "🤖 AI Advisor", 
+        "📊 Dashboard", 
+        "📈 Financial Analysis", 
+        compliance_label, 
+        "⚙️ Settings"
+    ])
+
+    # ── Tab 1: AI Advisor ────────────────────────────────────────────────────
+    with tabs[0]:
+        sidebar.render_ai_advisor()
+
+    # ── Tab 2: Dashboard ─────────────────────────────────────────────────────
+    with tabs[1]:
         tab_dashboard.render(handler, weather, portfolio)
-    with tab2:
+
+    # ── Tab 3: Financial Analysis ────────────────────────────────────────────
+    with tabs[2]:
         tab_financial.render(handler, portfolio)
-    with tab3:
+
+    # ── Tab 4: Compliance ────────────────────────────────────────────────────
+    with tabs[3]:
         tab_compliance.render(handler, portfolio)
+
+    # ── Tab 5: Settings (Moved from Sidebar) ─────────────────────────────────
+    with tabs[4]:
+        sidebar.render_settings_tab(weather)
 
     # ── Footer ───────────────────────────────────────────────────────────────
     st.markdown(
