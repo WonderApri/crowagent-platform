@@ -23,7 +23,7 @@ import streamlit as st
 
 from config.constants import CI_ELECTRICITY, ELEC_COST_PER_KWH, HEATING_SETPOINT_C
 from config.scenarios import SCENARIOS
-from app.segments.university_he import BUILDINGS
+from app.segments import get_segment_handler
 
 try:
     import pydeck as pdk
@@ -91,7 +91,7 @@ def _get_map_center() -> tuple[float, float, str]:
     return float(lat), float(lon), str(name)
 
 
-def _building_coords(center_lat: float, center_lon: float) -> dict[str, dict]:
+def _building_coords(center_lat: float, center_lon: float, building_names: list[str] = None) -> dict[str, dict]:
     """Compute absolute lat/lon for each fictional campus building.
 
     Offsets in ``_BUILDING_OFFSETS`` (metres) are converted to degrees
@@ -99,7 +99,18 @@ def _building_coords(center_lat: float, center_lon: float) -> dict[str, dict]:
     """
     cos_lat = math.cos(math.radians(center_lat))
     result: dict[str, dict] = {}
-    for bname, (north_m, east_m) in _BUILDING_OFFSETS.items():
+    
+    # Use hardcoded offsets where available, otherwise generate synthetic layout
+    offsets = _BUILDING_OFFSETS.copy()
+    if building_names:
+        unknowns = [b for b in building_names if b not in offsets]
+        if unknowns:
+            radius, step = 150.0, 360.0 / len(unknowns)
+            for i, bname in enumerate(unknowns):
+                angle = math.radians(i * step)
+                offsets[bname] = (radius * math.cos(angle), radius * math.sin(angle))
+
+    for bname, (north_m, east_m) in offsets.items():
         result[bname] = {
             "lat": center_lat + north_m / 111_000.0,
             "lon": center_lon + east_m / (111_000.0 * cos_lat),
@@ -220,6 +231,7 @@ def _compute_all_buildings(
     weather: dict,
     center_lat: float,
     center_lon: float,
+    buildings: dict,
 ) -> list[dict]:
     """
     Run the physics engine for all campus buildings under *scenario_name*.
@@ -237,10 +249,10 @@ def _compute_all_buildings(
     if scenario_cfg is None:
         return []
 
-    bcoords = _building_coords(center_lat, center_lon)
+    bcoords = _building_coords(center_lat, center_lon, list(buildings.keys()))
     rows: list[dict] = []
 
-    for bname, bdata in BUILDINGS.items():
+    for bname, bdata in buildings.items():
         coords = bcoords.get(bname)
         if coords is None:
             continue
@@ -254,8 +266,8 @@ def _compute_all_buildings(
 
         rows.append({
             # Identity
-            "name":                 bname,
-            "building_type":        bdata.get("building_type", "University Building"),
+            "name":                 html.escape(bname),
+            "building_type":        html.escape(bdata.get("building_type", "University Building")),
             "lat":                  coords["lat"],
             "lon":                  coords["lon"],
             # Scenario comparison — shown in tooltip
@@ -506,6 +518,7 @@ def _render_3d_map(
     osm_rows: list[dict] | None = None,
     road_rows: list[dict] | None = None,
     selected_building: str | None = None,
+    buildings: dict = None,
 ) -> None:
     """Render the Google Maps-style 3D digital twin on a light CARTO basemap.
 
@@ -516,7 +529,7 @@ def _render_3d_map(
     Polygon assignment (nearest-OSM matching) is cached in session_state per
     location so scenario changes and building selections do not re-hit OSM.
     """
-    rows = _compute_all_buildings(scenario_name, weather, center_lat, center_lon)
+    rows = _compute_all_buildings(scenario_name, weather, center_lat, center_lon, buildings or {})
     if not rows:
         st.info("No building data available for the selected scenario.")
         return
@@ -604,6 +617,13 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
     center_lat, center_lon, location_label = _get_map_center()
 
     # ── Section header ────────────────────────────────────────────────────────
+    # Resolve buildings for current segment
+    segment = st.session_state.get("user_segment", "university_he")
+    try:
+        buildings = get_segment_handler(segment).building_registry
+    except Exception:
+        buildings = {}
+
     safe_location_label = html.escape(location_label)
     st.markdown(
         f"<div class='sec-hdr'>🗺️ 3D Campus Digital Twin"
@@ -689,6 +709,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         osm_rows=osm_rows,
         road_rows=road_rows,
         selected_building=selected_building,
+        buildings=buildings,
     )
 
     # ── Legend + attribution ──────────────────────────────────────────────────
@@ -728,7 +749,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         unsafe_allow_html=True,
     )
 
-    building_names = list(_BUILDING_OFFSETS.keys())
+    building_names = list(buildings.keys())
     card_cols = st.columns(len(building_names))
 
     for col, bname in zip(card_cols, building_names):
@@ -762,7 +783,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
             "<hr style='border-color:#1A3A5C;margin:12px 0 0;'/>",
             unsafe_allow_html=True,
         )
-        _render_building_info_panel(selected_building, selected_scenario_names, weather)
+        _render_building_info_panel(selected_building, selected_scenario_names, weather, buildings)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -774,6 +795,7 @@ def _render_building_info_panel(
     building_name: str,
     selected_scenario_names: list[str],
     weather: dict,
+    buildings: dict,
 ) -> None:
     """Render a Google Maps-style info card for the selected campus building.
 
@@ -785,7 +807,7 @@ def _render_building_info_panel(
     """
     from core.physics import calculate_thermal_load
 
-    bdata  = BUILDINGS.get(building_name)
+    bdata  = buildings.get(building_name)
     if bdata is None:
         return
     _, _, location_label = _get_map_center()

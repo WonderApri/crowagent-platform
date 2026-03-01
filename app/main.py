@@ -20,6 +20,9 @@ import app.session as session
 # ── Page config (must be first Streamlit call at module level) ──────────────
 st.set_page_config(**branding.PAGE_CONFIG)
 
+# Re-export render_card as _card for compatibility with tab modules
+_card = branding.render_card
+
 import app.sidebar as sidebar
 from app.segments import get_segment_handler
 import app.tabs.dashboard as tab_dashboard
