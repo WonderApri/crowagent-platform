@@ -1,42 +1,41 @@
 """
-Physical and financial constants for the CrowAgent™ Platform.
+Physical and financial constants.
+Canonical source of truth for the platform.
 """
 
-# Grid & Energy
-CI_ELECTRICITY = 0.20482  # kgCO2e/kWh (BEIS 2023)
-
-CI_GAS = 0.18316
-CI_OIL = 0.24666
-CI_LPG = 0.21448
-
-ELEC_COST_PER_KWH = 0.28  # £/kWh (HESA 2022-23)
-GAS_COST_PER_KWH = 0.07
-DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH = ELEC_COST_PER_KWH
-
-# Physics / Thermal Model
+# ─────────────────────────────────────────────────────────────────────────────
+# Physical Constants (sourced from core/physics.py)
+# ─────────────────────────────────────────────────────────────────────────────
+DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH = 0.28
 HEATING_SETPOINT_C = 21.0
 HEATING_HOURS_PER_YEAR = 5800.0
-BASE_ACH = 0.5
-SOLAR_IRRADIANCE_KWH_M2_YEAR = 1000.0
-SOLAR_APERTURE_FACTOR = 0.7
-SOLAR_UTILISATION_FACTOR = 0.85
-INFILTRATION_HEAT_CAPACITY_FACTOR = 0.33
+BASE_ACH = 0.5  # Standard baseline air changes per hour
+SOLAR_IRRADIANCE_KWH_M2_YEAR = 950.0
+SOLAR_APERTURE_FACTOR = 1.0
+SOLAR_UTILISATION_FACTOR = 1.0
 
-# Compliance Targets (Part L 2021)
+# ─────────────────────────────────────────────────────────────────────────────
+# Compliance Constants (sourced from app/compliance.py)
+# ─────────────────────────────────────────────────────────────────────────────
+CI_ELECTRICITY = 0.20482
+CI_GAS = 0.18316  # Standard BEIS value
+CI_OIL = 0.26831  # Standard BEIS value
+CI_LPG = 0.21448  # Standard BEIS value
+
+ELEC_COST_PER_KWH = 0.28
+GAS_COST_PER_KWH = 0.07
+
+EPC_BANDS = ["A", "B", "C", "D", "E", "F", "G"]
+MEES_CURRENT_MIN_BAND = "E"
+MEES_2028_TARGET_BAND = "C"
+MEES_2030_TARGET_BAND = "B"
+
 PART_L_2021_U_WALL = 0.18
 PART_L_2021_U_ROOF = 0.15
 PART_L_2021_U_GLAZING = 1.4
 
+FHS_MAX_PRIMARY_ENERGY = 45.0
+
 PART_L_2021_ND_U_WALL = 0.26
 PART_L_2021_ND_U_ROOF = 0.18
 PART_L_2021_ND_U_GLAZING = 1.6
-
-FHS_MAX_PRIMARY_ENERGY = 45.0  # kWh/m2/yr
-
-EPC_BANDS = {
-    "A": (92, 100), "B": (81, 91), "C": (69, 80), "D": (55, 68),
-    "E": (39, 54), "F": (21, 38), "G": (1, 20)
-}
-MEES_CURRENT_MIN_BAND = "E"
-MEES_2028_TARGET_BAND = "C"
-MEES_2030_TARGET_BAND = "B"

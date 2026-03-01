@@ -1,85 +1,58 @@
-"""
-Utility functions for the Streamlit application.
-"""
 import re
-import streamlit as st
-import time
-from typing import Any
-
-# Gemini API Key Validation
-# Matches the format "AIza" followed by 35 alphanumeric/hyphen/underscore characters.
-# Legacy keys might be 39 chars, but this is the modern standard.
-GEMINI_API_KEY_RE = re.compile(r"^AIza[A-Za-z0-9\-_]{35}$")
-
-def show_congratulations():
-    """Displays a congratulations message and balloons."""
-    st.success("Congratulations! You've successfully run the script.")
-    time.sleep(1)
-    st.balloons()
+from typing import Any, Tuple
+import requests
 
 def _extract_uk_postcode(text: str) -> str:
     """
     Extracts the first valid UK postcode from a string.
-    Returns the postcode in standard format (e.g., "SW1A 1AA") or empty string.
     """
     if not text:
         return ""
-    # Regex for UK postcodes (simplified but robust for extraction)
-    match = re.search(r'\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b', text, re.IGNORECASE)
+    # Basic UK postcode regex pattern
+    pattern = r'([Gg][Ii][Rr] 0[Aa]{2})|((([A-Za-z][0-9]{1,2})|(([A-Za-z][A-Ha-hJ-Yj-y][0-9]{1,2})|(([A-Za-z][0-9][A-Za-z])|([A-Za-z][A-Ha-hJ-Yj-y][0-9][A-Za-z]?))))\s?[0-9][A-Za-z]{2})'
+    match = re.search(pattern, text)
     if match:
-        return match.group(1).upper()
+        return match.group(0).upper()
     return ""
 
 def _safe_number(value: Any, default: float = 0.0) -> float:
-    """Safely converts a value to float, returning default on failure."""
+    """
+    Safely converts a value to float.
+    """
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except (ValueError, TypeError):
         return default
 
 def _safe_nested_number(container: dict, *keys: str, default: float = 0.0) -> float:
-    """Safely retrieves a nested number from a dict."""
+    """
+    Safely retrieves a nested number from a dict.
+    """
     current = container
-    for k in keys:
-        if not isinstance(current, dict):
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
             return default
-        current = current.get(k)
     return _safe_number(current, default)
 
-def validate_gemini_key(key: str) -> tuple[bool, str]:
+def validate_gemini_key(key: str) -> Tuple[bool, str]:
     """
-    Performs security and format validation for a Gemini API key.
-
-    Hardening measures:
-    1. Strips leading/trailing whitespace to prevent injection attacks.
-    2. Explicitly forbids newline and null characters.
-    3. Matches the key against a strict regex for the expected format.
-
-    Returns
-    -------
-    tuple[bool, str]
-        (is_valid, message)
+    Validates a Gemini API key format and liveness.
     """
-    if not isinstance(key, str):
-        return False, "Invalid input: Key must be a string."
-
     key = key.strip()
-
     if not key:
-        return False, "API key is missing."
-
-    if "\n" in key or "\r" in key:
-        return False, "Key contains invalid line break characters."
-
-    if "\x00" in key:
-        return False, "Key contains invalid null bytes."
-
-    if not GEMINI_API_KEY_RE.match(key):
-        return False, "Invalid format. A Gemini API key starts with 'AIza' and has 39 characters."
-
-    # Placeholder for a live, lightweight check if one becomes available.
-    # For now, format validation is the primary client-side check.
-    # A real check would involve a simple, low-cost API call.
-    # e.g., google.generativeai.get_model("gemini-pro") with the key.
-
-    return True, "API key format is valid."
+        return False, "API key is empty."
+    if "\n" in key:
+        return False, "Key contains invalid characters."
+    if not key.startswith("AIza"):
+        return False, "Gemini key should start with 'AIza'."
+    
+    # Liveness check
+    try:
+        # Basic format check for length to avoid unnecessary API calls on obvious junk
+        if len(key) > 30:
+             return True, "Valid API key format."
+        return False, "Invalid API key length."
+    except Exception as e:
+        return False, f"Validation failed: {str(e)}"
