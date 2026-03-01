@@ -644,7 +644,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         )
     with btn_col:
         search_clicked = st.button("🔍 Search", key="viz3d_search_btn",
-                                   width="stretch")
+                                   use_container_width=True)
 
     if search_clicked and search_query.strip():
         with st.spinner(f"Searching for '{search_query}'…"):
@@ -772,7 +772,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
                 unsafe_allow_html=True,
             )
             if st.button(label, key=f"viz3d_card_{bname}",
-                         width="stretch",
+                         use_container_width=True,
                          type="primary" if is_sel else "secondary"):
                 st.session_state.viz3d_selected_building = None if is_sel else bname
                 st.rerun()
@@ -1042,7 +1042,7 @@ def _info_tab_scenarios(
         st.dataframe(
             pd.DataFrame(rows),
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
         )
         st.caption(
             "Costs at £0.28/kWh (HESA 2022-23). "
