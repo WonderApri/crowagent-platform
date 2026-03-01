@@ -7,8 +7,11 @@ def _get_secret(key: str, default: str = "") -> str:
     """
     Retrieve a secret from Streamlit secrets or environment variables.
     """
-    if hasattr(st, "secrets") and key in st.secrets:
-        return st.secrets[key]
+    try:
+        if hasattr(st, "secrets") and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
     return os.getenv(key, default)
 
 def init_session():
