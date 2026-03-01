@@ -10,6 +10,9 @@ def render(handler, weather, portfolio):
     """
     Render the Dashboard tab.
     """
+    # Safely access default_scenarios with fallback
+    default_scenarios = getattr(handler, "default_scenarios", ["Baseline (No Intervention)"])
+
     # Filter active buildings
     active_ids = st.session_state.get("active_analysis_ids", [])
     active_buildings = [b for b in portfolio if b["id"] in active_ids]
@@ -20,7 +23,7 @@ def render(handler, weather, portfolio):
 
     # ── KPI Cards ────────────────────────────────────────────────────────────
     # Calculate aggregate savings for the first default scenario vs baseline
-    scenario_name = handler.default_scenarios[1] if len(handler.default_scenarios) > 1 else "Baseline (No Intervention)"
+    scenario_name = default_scenarios[1] if len(default_scenarios) > 1 else "Baseline (No Intervention)"
     scenario_cfg = SCENARIOS.get(scenario_name)
     
     total_energy_saved = 0.0
@@ -50,7 +53,7 @@ def render(handler, weather, portfolio):
     st.markdown("### 🗺️ Campus Digital Twin")
     # Convert list of dicts to dict of dicts for the map renderer
     buildings_map = {b["name"]: b for b in active_buildings}
-    render_campus_3d_map(handler.default_scenarios, weather)
+    render_campus_3d_map(default_scenarios, weather)
 
     # ── Thermal Load Chart ───────────────────────────────────────────────────
     st.markdown("### ⚡ Thermal Load Analysis")
@@ -62,7 +65,7 @@ def render(handler, weather, portfolio):
     # Prepare data for chart
     chart_data = []
     for b in active_buildings:
-        for s_name in handler.default_scenarios:
+        for s_name in default_scenarios:
             s_cfg = SCENARIOS.get(s_name)
             if not s_cfg: continue
             try:
@@ -78,7 +81,7 @@ def render(handler, weather, portfolio):
     if chart_data:
         df_chart = pd.DataFrame(chart_data)
         fig = go.Figure()
-        for s_name in handler.default_scenarios:
+        for s_name in default_scenarios:
             subset = df_chart[df_chart["Scenario"] == s_name]
             fig.add_trace(go.Bar(
                 x=subset["Building"],
