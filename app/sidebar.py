@@ -15,8 +15,14 @@ def render_sidebar():
     """
     # Onboarding Gate
     if not st.session_state.get("user_segment"):
-        st.title("Welcome to CrowAgent™")
-        st.markdown("### Select your segment to begin:")
+        if branding.get_logo_uri():
+            _, c, _ = st.columns([1, 2, 1])
+            with c:
+                st.image(branding.get_logo_uri(), use_container_width=True)
+        else:
+            st.title("Welcome to CrowAgent™")
+        
+        st.markdown("<h3 style='text-align: center; margin-bottom: 2rem;'>Select your segment to begin:</h3>", unsafe_allow_html=True)
         
         cols = st.columns(2)
         for i, (seg_id, label) in enumerate(SEGMENT_LABELS.items()):
