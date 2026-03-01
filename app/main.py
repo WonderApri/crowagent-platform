@@ -58,15 +58,6 @@ def run() -> None:
     if not segment:
         return # Onboarding gate handled inside render_onboarding
 
-    # ── 1. Onboarding Gate ───────────────────────────────────────────────────
-    if sidebar.render_onboarding():
-        return
-
-    # ── 2. Minimal Sidebar (Mobile Friendly) ─────────────────────────────────
-    sidebar.render_minimal_sidebar()
-
-    # ── 3. Data Fetching ─────────────────────────────────────────────────────
-    weather = sidebar.get_weather_data()
     handler = get_segment_handler(st.session_state.user_segment)
     portfolio = st.session_state.portfolio
 
@@ -90,7 +81,7 @@ def run() -> None:
 
     # ── Tab 1: AI Advisor ────────────────────────────────────────────────────
     with tabs[0]:
-        sidebar.render_ai_advisor()
+        sidebar.render_ai_advisor(handler, weather)
 
     # ── Tab 2: Dashboard ─────────────────────────────────────────────────────
     with tabs[1]:

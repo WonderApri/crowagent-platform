@@ -1,256 +1,306 @@
 import streamlit as st
-import html
-import app.branding as branding
+import logging
+import re
+import uuid
+from typing import Tuple, Optional, Dict, Any
+
+# Services
+import services.weather as weather_service
+import services.epc as epc_service
+import core.agent as agent_service
+
+# App modules
 from app.segments import SEGMENT_LABELS
-from config.scenarios import SCENARIOS
-import services.weather as wx
-import services.location as loc
-import services.epc as epc
-import core.agent as agent
-from app.utils import validate_gemini_key
+from config.scenarios import SEGMENT_SCENARIOS, SCENARIOS
 
-def render_onboarding():
-    """Renders onboarding gate. Returns True if onboarding active (stop execution)."""
+# Utils
+try:
+    from app.utils import _extract_uk_postcode, validate_gemini_key
+except ImportError:
+    # Fallback if utils not fully migrated
+    def _extract_uk_postcode(text: str) -> str:
+        if not text: return ""
+        match = re.search(r'([Gg][Ii][Rr] 0[Aa]{2})|((([A-Za-z][0-9]{1,2})|(([A-Za-z][A-Ha-hJ-Yj-y][0-9]{1,2})|(([A-Za-z][0-9][A-Za-z])|([A-Za-z][A-Ha-hJ-Yj-y][0-9][A-Za-z]?))))\s?[0-9][A-Za-z]{2})', text)
+        return match.group(0).upper() if match else ""
+    
+    def validate_gemini_key(key: str) -> Tuple[bool, str, bool]:
+        if not key: return False, "Key is empty", False
+        if not key.startswith("AIza"): return False, "Key should start with 'AIza'", False
+        return True, "Valid format", True
+
+logger = logging.getLogger(__name__)
+
+def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
+    """
+    Renders the full sidebar and returns the current context.
+    Returns: (segment_id, weather_dict, location_name)
+    """
+    # 1. Segment Gate (Full Screen if no segment selected)
     if not st.session_state.get("user_segment"):
-        if branding.get_logo_uri():
-            _, c, _ = st.columns([1, 2, 1])
-            with c:
-                st.image(branding.get_logo_uri(), use_container_width=True)
-        else:
-            st.title("Welcome to CrowAgent™")
-        
-        st.markdown("<h3 style='text-align: center; margin-bottom: 2rem;'>Select your segment to begin:</h3>", unsafe_allow_html=True)
-        
-        cols = st.columns(2)
-        for i, (seg_id, label) in enumerate(SEGMENT_LABELS.items()):
-            with cols[i % 2]:
-                if st.button(label, key=f"btn_{seg_id}", use_container_width=True):
-                    st.session_state.user_segment = seg_id
-                    st.rerun()
-        return True
-    return False
+        _render_segment_gate()
+        return None, {}, ""
 
-def render_minimal_sidebar():
-    """Renders minimal sidebar content (Logo, Change Segment)."""
+    segment = st.session_state.user_segment
+    
+    # 2. Sidebar Content
     with st.sidebar:
-        if branding.get_logo_uri():
-            st.image(branding.get_logo_uri(), use_container_width=True)
-        else:
-            st.header("CrowAgent™")
-        st.caption(f"Segment: {SEGMENT_LABELS.get(st.session_state.user_segment)}")
-        
-        if st.button("Change Segment"):
+        # Advanced Settings
+        with st.expander("⚙️ Advanced Settings"):
+            st.session_state.energy_tariff_gbp_per_kwh = st.number_input(
+                "Electricity Tariff (£/kWh)",
+                min_value=0.05, max_value=1.00,
+                value=float(st.session_state.get("energy_tariff_gbp_per_kwh", 0.28)),
+                step=0.01,
+                format="%.2f"
+            )
+
+        # Active Segment Display
+        st.info(f"**Active Segment:**\n{SEGMENT_LABELS.get(segment, segment)}")
+        if st.button("Change Segment", key="btn_change_seg", use_container_width=True):
             st.session_state.user_segment = None
             st.rerun()
             
-        st.divider()
-        st.info("⚙️ Configure Portfolio & Settings in the 'Settings' tab.")
+        st.markdown("---")
 
-def get_weather_data():
-    """Fetches weather data based on session state."""
+        # Scenarios
+        st.subheader("Scenarios")
+        _render_scenario_selector(segment)
+        
+        st.markdown("---")
+
+        # Portfolio Controls
+        _render_portfolio_controls(segment)
+        
+        st.markdown("---")
+
+        # Weather
+        weather_data = _render_weather_widget()
+        
+        st.markdown("---")
+
+        # API Keys
+        _render_api_keys()
+        
+        st.markdown("---")
+        
+        # AI Advisor
+        _render_ai_advisor_panel()
+        
+        # Footer / Audit
+        with st.expander("📜 Config Audit Log"):
+            if "audit_log" not in st.session_state:
+                st.session_state.audit_log = []
+            for entry in st.session_state.audit_log[-5:]:
+                st.text(f"{entry.get('timestamp', '')} {entry.get('event', '')}")
+
+    return segment, weather_data, weather_data.get("location_name", "Unknown")
+
+def _render_segment_gate():
+    """Renders the 4-card segment selection screen."""
+    st.markdown("## Select Your Segment")
+    st.markdown("Choose the profile that best matches your use case.")
+    
+    cols = st.columns(2)
+    
+    with cols[0]:
+        with st.container(border=True):
+            st.markdown("### 🏛️ University / HE")
+            st.markdown("Campus estate management, decarbonisation planning.")
+            if st.button("Select University", key="btn_seg_uni", use_container_width=True):
+                st.session_state.user_segment = "university_he"
+                st.rerun()
+
+    with cols[1]:
+        with st.container(border=True):
+            st.markdown("### 🏢 Commercial Landlord")
+            st.markdown("Office blocks, retail parks, mixed-use developments.")
+            if st.button("Select Landlord", key="btn_seg_landlord", use_container_width=True):
+                st.session_state.user_segment = "smb_landlord"
+                st.rerun()
+                
+    cols2 = st.columns(2)
+    
+    with cols2[0]:
+        with st.container(border=True):
+            st.markdown("### 🏭 SMB Industrial")
+            st.markdown("Manufacturing, logistics, warehousing. SECR reporting.")
+            if st.button("Select Industrial", key="btn_seg_ind", use_container_width=True):
+                st.session_state.user_segment = "smb_industrial"
+                st.rerun()
+
+    with cols2[1]:
+        with st.container(border=True):
+            st.markdown("### 🏠 Individual Self-Build")
+            st.markdown("Single dwelling retrofit, heat pump sizing.")
+            if st.button("Select Self-Build", key="btn_seg_self", use_container_width=True):
+                st.session_state.user_segment = "individual_selfbuild"
+                st.rerun()
+
+def _render_scenario_selector(segment: str):
+    """Renders checkboxes for scenarios available to the segment."""
+    available = SEGMENT_SCENARIOS.get(segment, [])
+    if "selected_scenario_names" not in st.session_state:
+        st.session_state.selected_scenario_names = []
+    if not st.session_state.selected_scenario_names and available:
+        st.session_state.selected_scenario_names = available[:3]
+
+    selected = []
+    for sc_id in available:
+        sc_data = SCENARIOS.get(sc_id, {})
+        label = sc_data.get("name", sc_id)
+        is_checked = sc_id in st.session_state.selected_scenario_names
+        if st.checkbox(label, value=is_checked, key=f"chk_sc_{sc_id}"):
+            selected.append(sc_id)
+    st.session_state.selected_scenario_names = selected
+
+def _render_portfolio_controls(segment: str):
+    """Renders Add/Remove building controls."""
+    st.subheader("Asset Portfolio")
+    with st.expander("➕ Add Building", expanded=False):
+        postcode_input = st.text_input("Postcode", key="inp_add_pc").upper()
+        if st.button("Search & Add", key="btn_add_bldg"):
+            clean_pc = _extract_uk_postcode(postcode_input)
+            if clean_pc:
+                with st.spinner("Fetching EPC data..."):
+                    add_to_portfolio(clean_pc, segment)
+            else:
+                st.error("Invalid UK Postcode")
+
+    portfolio = st.session_state.get("portfolio", [])
+    seg_portfolio = [p for p in portfolio if p.get("segment") == segment]
+    
+    if not seg_portfolio:
+        st.info("No buildings in portfolio.")
+        return
+
+    options = {p["id"]: p.get("display_name", p["id"]) for p in seg_portfolio}
+    if "active_analysis_ids" not in st.session_state:
+        st.session_state.active_analysis_ids = list(options.keys())[:5]
+        
+    selected_ids = st.multiselect(
+        "Active Analysis Assets",
+        options=list(options.keys()),
+        format_func=lambda x: options[x],
+        default=[x for x in st.session_state.active_analysis_ids if x in options],
+        key="ms_active_assets"
+    )
+    st.session_state.active_analysis_ids = selected_ids
+    
+    if st.button("Clear Portfolio", key="btn_clear_port"):
+        st.session_state.portfolio = [p for p in portfolio if p.get("segment") != segment]
+        st.session_state.active_analysis_ids = []
+        st.rerun()
+
+def _render_weather_widget() -> Dict[str, Any]:
+    """Renders weather provider selection and current weather."""
+    st.subheader("Live Weather")
+    provider = st.selectbox("Provider", ["open_meteo", "met_office", "manual"], index=0, key="sb_wx_prov")
+    st.session_state.weather_provider = provider
+    
+    lat, lon, loc_name = 51.45, -0.97, "Reading (Default)"
+    # Logic to find location from portfolio would go here
+    
     try:
-        # Safely handle potential missing exception class during refactor
-        WeatherError = getattr(wx, "WeatherFetchError", Exception)
-        weather = wx.get_weather(
-            lat=st.session_state.get("wx_lat", 51.4543),
-            lon=st.session_state.get("wx_lon", -0.9781),
-            location_name=st.session_state.get("wx_location_name", "Reading, Berkshire, UK"),
-            provider=st.session_state.get("wx_provider", "open_meteo"),
-            met_office_key=st.session_state.get("met_office_key"),
-            openweathermap_key=st.session_state.get("owm_key")
+        weather = weather_service.get_weather(
+            lat, lon, loc_name, provider,
+            met_key=st.session_state.get("met_office_key"),
+            owm_key=st.session_state.get("openweathermap_key")
         )
-    except WeatherError as e:
-        # st.warning(f"Weather unavailable: {e}") # Don't warn here, just return fallback
-        weather = {
-            "temperature_c": 10.0, 
-            "condition": "Unavailable", 
-            "condition_icon": "⚠️",
-            "description": "Data unavailable"
-        }
+    except Exception as e:
+        st.warning(f"Weather fetch failed: {e}")
+        weather = {"temperature_c": 10.0, "description": "Fallback", "location_name": loc_name}
+
+    c1, c2 = st.columns([1, 2])
+    c1.metric("Temp", f"{weather.get('temperature_c', 0):.1f}°C")
+    c2.caption(f"📍 {weather.get('location_name', 'Unknown')}\n☁️ {weather.get('description', '-')}")
     return weather
 
-def render_settings_tab(weather_data):
-    """Renders the Settings tab content (Portfolio, Location, Keys)."""
+def _render_api_keys():
+    with st.expander("🔑 API Keys (optional)"):
+        gem_key = st.text_input("Gemini API key", value=st.session_state.get("gemini_key", ""), type="password", key="inp_gem_key")
+        if gem_key != st.session_state.get("gemini_key"):
+            st.session_state.gemini_key = gem_key
+            is_valid, msg, _ = validate_gemini_key(gem_key)
+            st.session_state.gemini_key_valid = is_valid
+
+def _render_ai_advisor_panel():
+    st.subheader("🤖 AI Advisor")
+    st.caption("Chat available in AI Advisor tab.")
+
+def add_to_portfolio(postcode: str, segment: str):
+    api_key = st.session_state.get("epc_api_key", "")
+    try:
+        epc_data = epc_service.fetch_epc_data(postcode, api_key=api_key)
+    except Exception:
+        epc_data = {"postcode": postcode, "address": f"Unknown ({postcode})"}
     
-    st.header("⚙️ Configuration & Settings")
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.subheader("🏢 Asset Portfolio")
-        
-        # Add Building
-        with st.expander("Add Building", expanded=False):
-            postcode_input = st.text_input("Postcode", placeholder="SW1A 1AA", key="sb_pc_input", max_chars=10).strip()
-            if st.button("Search EPC", key="sb_epc_btn", disabled=not postcode_input):
-                try:
-                    with st.spinner("Fetching EPC data..."):
-                        epc_data = epc.fetch_epc_data(postcode_input, api_key=st.session_state.get("epc_key"))
-                        
-                    # Calculate baseline energy using EPC current consumption if available, else estimate
-                    baseline_mwh = epc_data.get("floor_area_m2", 100.0) * 0.15 # Fallback estimate
-                    if "energy_consumption_current" in epc_data:
-                        try:
-                            baseline_mwh = epc_data.get("floor_area_m2", 100.0) * float(epc_data["energy_consumption_current"]) / 1000.0
-                        except (ValueError, TypeError):
-                            pass
+    entry = init_portfolio_entry(epc_data, segment)
+    if "portfolio" not in st.session_state: st.session_state.portfolio = []
+    st.session_state.portfolio.append(entry)
+    st.success(f"Added {entry['display_name']}")
 
-                    # Create new portfolio entry
-                    new_building = {
-                        "id": f"bld_{len(st.session_state.portfolio) + 1}",
-                        "name": f"Building at {postcode_input.upper()}",
-                        "postcode": postcode_input.upper(),
-                        "segment": st.session_state.user_segment,
-                        "floor_area_m2": epc_data.get("floor_area_m2", 100.0),
-                        "built_year": epc_data.get("built_year", 1990),
-                        "epc_band": epc_data.get("epc_band", "D"),
-                        # Default physics params
-                        "height_m": 12.0,
-                        "glazing_ratio": 0.4,
-                        "u_value_wall": 0.45,
-                        "u_value_roof": 0.30,
-                        "u_value_glazing": 2.8,
-                        "baseline_energy_mwh": baseline_mwh,
-                        "occupancy_hours": 3000,
-                        "building_type": "Office",
-                    }
-                    st.session_state.portfolio.append(new_building)
-                    st.success(f"Added {new_building['name']}")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to add building: {e}")
+def remove_from_portfolio(building_id: str):
+    if "portfolio" in st.session_state:
+        st.session_state.portfolio = [p for p in st.session_state.portfolio if p["id"] != building_id]
 
-        # Active Assets
-        segment_assets = [b for b in st.session_state.portfolio if b.get("segment") == st.session_state.user_segment]
-        if segment_assets:
-            asset_names = [b["name"] for b in segment_assets]
-            selected = st.multiselect(
-                "Active Analysis Assets",
-                options=asset_names,
-                default=asset_names[:3], # Select first 3 by default
-                key="sb_active_assets"
-            )
-            # Update active IDs based on selection
-            st.session_state.active_analysis_ids = [
-                b["id"] for b in segment_assets if b["name"] in selected
-            ]
-            
-            if st.button("Clear Portfolio", key="sb_clear_port"):
-                st.session_state.portfolio = [b for b in st.session_state.portfolio if b.get("segment") != st.session_state.user_segment]
-                st.session_state.active_analysis_ids = []
-                st.rerun()
-        else:
-            st.info("No assets in portfolio. Add one above.")
+def init_portfolio_entry(epc_data: dict, segment: str) -> dict:
+    return {
+        "id": str(uuid.uuid4())[:8],
+        "segment": segment,
+        "postcode": epc_data.get("postcode"),
+        "display_name": epc_data.get("address", "Unknown Building"),
+        "floor_area_m2": float(epc_data.get("total-floor-area", 100.0)),
+        "epc_rating": epc_data.get("current-energy-rating", "E"),
+        "latitude": 51.45, "longitude": -0.97
+    }
 
-    with col2:
-        st.subheader("📍 Location")
-        
-        # Location Selector
-        current_loc = st.session_state.get("wx_location_name", "Reading, Berkshire, UK")
-        selected_city = st.selectbox(
-            "Select City", 
-            options=loc.city_options(),
-            index=loc.city_options().index(current_loc) if current_loc in loc.city_options() else 0,
-            label_visibility="collapsed"
-        )
-        
-        if selected_city != current_loc:
-            meta = loc.city_meta(selected_city)
-            st.session_state.wx_location_name = selected_city
-            st.session_state.wx_lat = meta["lat"]
-            st.session_state.wx_lon = meta["lon"]
-            st.rerun()
-
-        # Weather Widget Display (using passed weather data)
-        condition_safe = html.escape(weather_data.get('condition', ''))
-        st.markdown(
-            f"""
-            <div class="wx-widget">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div class="wx-temp">{weather_data.get('temperature_c')}°C</div>
-                    <div style="font-size:2rem;">{weather_data.get('condition_icon')}</div>
-                </div>
-                <div class="wx-desc">{condition_safe}</div>
-                <div class="wx-row">💨 {weather_data.get('wind_speed_mph', 0)} mph &nbsp; 💧 {weather_data.get('humidity_pct', 0)}%</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        
-        st.subheader("🔑 API Keys")
-        with st.expander("🔑 API Keys & Config"):
-            gemini_input = st.text_input(
-                "Gemini API Key",
-                value=st.session_state.get("gemini_key", ""),
-                type="password",
-                help="Required for AI Advisor"
-            )
-            if gemini_input != st.session_state.get("gemini_key", ""):
-                valid, msg = validate_gemini_key(gemini_input)
-                if valid:
-                    st.session_state.gemini_key = gemini_input
-                    st.success("Key updated")
-                else:
-                    st.error(msg)
-
-            st.session_state.met_office_key = st.text_input(
-                "Met Office Key (Optional)",
-                value=st.session_state.get("met_office_key", ""),
-                type="password"
-            )
-            
-            st.session_state.owm_key = st.text_input(
-                "OpenWeatherMap Key (Optional)",
-                value=st.session_state.get("owm_key", ""),
-                type="password"
-            )
-            
-            st.session_state.epc_key = st.text_input(
-                "EPC OpenData Key (Optional)",
-                value=st.session_state.get("epc_key", ""),
-                type="password"
-            )
-
-def render_ai_advisor():
+def render_ai_advisor(handler, weather_data: Dict[str, Any]):
     """Renders the AI Advisor chat interface."""
-    st.header("🤖 AI Advisor")
-        
-    # Chat History Display
+    st.subheader("🤖 AI Advisor")
+    
+    if not st.session_state.get("gemini_key_valid"):
+        st.warning("Please enter a valid Gemini API key in the sidebar to use the AI Advisor.")
+        return
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    # Display chat history
     for msg in st.session_state.chat_history:
-        role = "user" if msg["role"] == "user" else "assistant"
-        with st.chat_message(role):
+        with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Chat Input
-    if prompt := st.chat_input("Ask about your portfolio..."):
-        if not st.session_state.get("gemini_key"):
-            st.error("Please enter a Gemini API Key in the Settings tab to use the AI Advisor.")
-        else:
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    # Prepare context from active buildings
-                    segment_assets = [b for b in st.session_state.portfolio if b.get("segment") == st.session_state.user_segment]
-                    active_buildings = {b["name"]: b for b in segment_assets if b["id"] in st.session_state.active_analysis_ids}
-                    # Call agent
-                    response = agent.run_agent_turn(
-                        prompt, 
-                        st.session_state.chat_history, 
-                        st.session_state.gemini_key, 
-                        active_buildings, 
-                        SCENARIOS,
-                        tariff=st.session_state.get("energy_tariff_gbp_per_kwh", 0.28)
+    # Chat input
+    if prompt := st.chat_input("Ask about energy efficiency..."):
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    response = agent_service.run_agent_turn(
+                        prompt,
+                        st.session_state.get("agent_history", []),
+                        st.session_state.gemini_key,
+                        handler.building_registry,
+                        SCENARIOS
                     )
+                    st.markdown(response)
+                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+                except Exception as e:
+                    st.error(f"AI Error: {str(e)}")
 
-                    # Handle response dict from agent
-                    answer = response.get("answer", "")
-                    if not answer and response.get("error"):
-                        answer = f"I encountered an error: {response['error']}"
-                    elif not answer:
-                        answer = "I'm sorry, I couldn't generate a response."
-
-                    st.markdown(answer)
-                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
+def render_settings_tab(weather_data: Dict[str, Any]):
+    """Renders the Settings tab content."""
+    st.header("⚙️ Settings")
+    st.info("Most settings are configured in the sidebar.")
+    
+    st.subheader("System Status")
+    st.json({
+        "segment": st.session_state.get("user_segment"),
+        "weather_location": weather_data.get("location_name"),
+        "weather_provider": st.session_state.get("weather_provider"),
+        "portfolio_size": len(st.session_state.get("portfolio", [])),
+        "gemini_active": st.session_state.get("gemini_key_valid", False)
+    })
