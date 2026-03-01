@@ -61,7 +61,15 @@ def run() -> None:
     handler = get_segment_handler(segment)
     portfolio = st.session_state.portfolio
 
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Financial Analysis", "🏛️ UK Compliance Hub"])
+    # Dynamic tab label for Compliance based on segment
+    compliance_label = {
+        "university_he": "🏛️ SECR & TCFD",
+        "smb_landlord": "🏛️ MEES & EPC",
+        "smb_industrial": "🏛️ SECR Carbon",
+        "individual_selfbuild": "🏛️ Part L & FHS",
+    }.get(segment, "🏛️ UK Compliance Hub")
+
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Financial Analysis", compliance_label])
     with tab1:
         tab_dashboard.render(handler, weather, portfolio)
     with tab2:

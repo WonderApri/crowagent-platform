@@ -46,4 +46,4 @@ class UniversityHEHandler(SegmentHandler):
     building_registry = BUILDINGS
     scenario_whitelist = SEGMENT_SCENARIOS["university_he"]
     default_scenarios = SEGMENT_DEFAULT_SCENARIOS["university_he"]
-    compliance_checks = ["epc_mees"]
+    compliance_checks = ["secr"]

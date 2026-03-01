@@ -22,7 +22,7 @@ h1,h2,h3,h4 {
 }
 
 [data-testid="stAppViewContainer"] > .main { background: #F0F4F8; }
-.block-container { padding-top: 0 !important; max-width: 100% !important; }
+.block-container { padding-top: 0 !important; max-width: 1400px !important; margin: 0 auto !important; }
 
 [data-testid="stSidebar"] {
   background: #071A2F !important;
