@@ -156,7 +156,7 @@ For licensing enquiries: crowagent.platform@gmail.com
 
 ---
 
-*v2.0.0 · 21 February 2026 · Working Prototype*
+*v2.0.0 · 28 February 2026 · Working Prototype*
 
 ## Contributing
 
