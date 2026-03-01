@@ -7,7 +7,6 @@ from __future__ import annotations
 import streamlit as st
 import sys
 import os
-import html
 import logging
 
 # Ensure project root is in sys.path for absolute imports
@@ -20,20 +19,6 @@ import app.session as session
 
 # ── Page config (must be first Streamlit call at module level) ──────────────
 st.set_page_config(**branding.PAGE_CONFIG)
-
-# ── KPI card component — defined BEFORE tab imports to prevent circular import
-def _card(label: str, value: str, subtext: str, accent_class: str = "") -> None:
-    """Renders a compact KPI card. Imported by tab modules as per spec."""
-    st.markdown(
-        f"""
-        <div class="kpi-card {accent_class}">
-            <div class="kpi-label">{html.escape(label)}</div>
-            <div class="kpi-value">{html.escape(value)}</div>
-            <div class="kpi-subtext">{html.escape(subtext)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 import app.sidebar as sidebar
 from app.segments import get_segment_handler

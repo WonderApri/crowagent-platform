@@ -3,6 +3,7 @@ Handles all visual branding, including CSS, logos, and page configuration.
 """
 import streamlit as st
 import base64
+import html
 from pathlib import Path
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +168,23 @@ def get_icon_uri() -> str:
 def inject_branding():
     """Injects custom CSS via a st.markdown call."""
     st.markdown(f"<style>{CROWAGENT_CSS}</style>", unsafe_allow_html=True)
+
+
+def render_card(label: str, value: str, subtext: str, accent_class: str = "") -> None:
+    """
+    Renders a compact KPI card.
+    Moved here from main.py to prevent circular imports with tab modules.
+    """
+    st.markdown(
+        f"""
+        <div class="kpi-card {accent_class}">
+            <div class="kpi-label">{html.escape(label)}</div>
+            <div class="kpi-value">{html.escape(value)}</div>
+            <div class="kpi-subtext">{html.escape(subtext)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # This dict is imported by main.py and passed to st.set_page_config()
