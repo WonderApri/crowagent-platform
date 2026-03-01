@@ -174,7 +174,7 @@ def fetch_epc_data(
             had_transport_error = True
             continue
 
-    if had_transport_error:
+    if had_transport_error and not strict_no_records:
         return _stub("EPC API request failed; using deterministic estimate.")
 
     strict_no_records = os.getenv(EPC_STRICT_NO_RECORDS_ENV, "").strip().lower() in {"1", "true", "yes"}

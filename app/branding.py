@@ -4,6 +4,7 @@ Handles all visual branding, including CSS, logos, and page configuration.
 import streamlit as st
 import base64
 import html
+import logging
 from pathlib import Path
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -133,6 +134,8 @@ div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hi
 header { background: transparent !important; }
 """
 
+logger = logging.getLogger(__name__)
+
 
 def _load_asset_uri(filename: str) -> str:
     """
@@ -150,6 +153,7 @@ def _load_asset_uri(filename: str) -> str:
                 data = f.read()
             b64_data = base64.b64encode(data).decode("utf-8")
             return f"data:image/svg+xml;base64,{b64_data}"
+    logger.warning(f"Asset not found: {filename}. Searched in: {[str(p) for p in candidate_paths]}")
     return ""
 
 

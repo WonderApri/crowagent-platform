@@ -1,5 +1,6 @@
 import streamlit as st
 import html
+import app.branding as branding
 from app.segments import SEGMENT_LABELS
 import services.weather as wx
 import services.location as loc
@@ -25,7 +26,10 @@ def render_sidebar():
 
     # Normal Sidebar
     with st.sidebar:
-        st.header("CrowAgent™")
+        if branding.get_logo_uri():
+            st.image(branding.get_logo_uri(), use_container_width=True)
+        else:
+            st.header("CrowAgent™")
         st.caption(f"Segment: {SEGMENT_LABELS.get(st.session_state.user_segment)}")
         
         if st.button("Change Segment"):
@@ -53,6 +57,8 @@ def render_sidebar():
 
         # Weather Service Integration
         try:
+            # Safely handle potential missing exception class during refactor
+            WeatherError = getattr(wx, "WeatherFetchError", Exception)
             weather = wx.get_weather(
                 lat=st.session_state.get("wx_lat", 51.4543),
                 lon=st.session_state.get("wx_lon", -0.9781),
@@ -61,7 +67,7 @@ def render_sidebar():
                 met_office_key=st.session_state.get("met_office_key"),
                 openweathermap_key=st.session_state.get("owm_key")
             )
-        except wx.WeatherFetchError as e:
+        except WeatherError as e:
             st.warning(f"Weather unavailable: {e}")
             weather = {
                 "temperature_c": 10.0, 
