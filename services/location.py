@@ -15,6 +15,25 @@ from __future__ import annotations
 import math
 import streamlit.components.v1 as components
 
+
+def _synthetic_polygon(lat: float, lon: float, size_m: float = 38.0) -> list[list[float]]:
+    """Build a simple square polygon around a coordinate.
+
+    Used by spatial visualizations when no real building footprint polygon is
+    available. Returns a closed ring in [lon, lat] order for map layers.
+    """
+    meters_per_deg_lat = 111_320.0
+    meters_per_deg_lon = 111_320.0 * max(0.2, math.cos(math.radians(lat)))
+    dlat = size_m / meters_per_deg_lat
+    dlon = size_m / meters_per_deg_lon
+    return [
+        [lon - dlon, lat - dlat],
+        [lon + dlon, lat - dlat],
+        [lon + dlon, lat + dlat],
+        [lon - dlon, lat + dlat],
+        [lon - dlon, lat - dlat],
+    ]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CITY DATABASE
 # ~60 cities; UK-weighted for Net Zero / Part L use cases.
@@ -202,6 +221,14 @@ function detectLocation() {
       var lon = pos.coords.longitude.toFixed(4);
       status.innerHTML = '\u2713 Located: ' + lat + ', ' + lon + ' \u2014 loading\u2026';
 
+      // always notify Streamlit of the coordinates so Python can handle them
+      try {
+        const Streamlit = window.parent.Streamlit || window.parent.streamlit;
+        Streamlit.setComponentValue({lat: lat, lon: lon});
+      } catch(_ignored) {
+        // gracefully ignore if API isn't available
+      }
+
       // Try to update the parent URL so that a refresh preserves the choice.
       // If this fails we still send the coords back to Python below.
       try {
@@ -214,15 +241,7 @@ function detectLocation() {
           + '<br/>Enter them manually below.';
         btn.disabled = false;
         // use HTML entity for pushpin to avoid Python surrogate issues
-        btn.textContent = '📍 Detect My Location';
-      }
-
-      // always notify Streamlit of the coordinates so Python can handle them
-      try {
-        const Streamlit = window.parent.Streamlit || window.parent.streamlit;
-        Streamlit.setComponentValue({lat: lat, lon: lon});
-      } catch(_ignored) {
-        // gracefully ignore if API isn't available
+        btn.textContent = '\\uD83D\\uDCCD Detect My Location';
       }
     },
     function(err) {
@@ -230,7 +249,7 @@ function detectLocation() {
       status.innerHTML = '\u274c ' + (msgs[err.code] || err.message)
                         + ' (try again or enter coords manually)';
       btn.disabled = false;
-      btn.textContent = '📍 Detect My Location';
+      btn.textContent = '\\uD83D\\uDCCD Detect My Location';
     },
     { timeout: 20000, maximumAge: 300000 }
   );
@@ -239,13 +258,11 @@ function detectLocation() {
 """
 
 
-def render_geo_detect() -> any:
+def render_geo_detect() -> None:
     """Embed the browser geolocation button as a Streamlit HTML component.
 
-    The HTML/JS snippet will call ``Streamlit.setComponentValue`` with a
-    dictionary containing ``lat``/``lon`` once the browser has successfully
-    obtained a position.  The return value from ``components.html`` is
-    propagated back to the caller, allowing the main app to react without
-    relying solely on query parameters.
+    The HTML/JS snippet attempts to update the parent window URL with
+    ``?geo_lat=...&geo_lon=...`` query parameters, causing a Streamlit
+    rerun. It does not return the coordinates directly to Python.
     """
-    return components.html(_GEO_HTML, height=68)
+    components.html(_GEO_HTML, height=68)

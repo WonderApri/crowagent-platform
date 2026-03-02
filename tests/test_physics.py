@@ -7,7 +7,12 @@ import pytest
 
 # Path setup: ensure the 'core' folder is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.physics import calculate_thermal_load, BUILDINGS, SCENARIOS
+from core.physics import calculate_thermal_load
+from config.scenarios import SCENARIOS
+from app.segments.university_he import UniversityHEHandler
+
+# The test suite was written against the University/HE segment's buildings
+BUILDINGS = UniversityHEHandler().building_registry
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants (must match physics.py)
@@ -38,16 +43,16 @@ def test_baseline_logic():
     assert result["u_wall"] == building["u_value_wall"]
     assert result["u_roof"] == building["u_value_roof"]
     assert result["u_glazing"] == building["u_value_glazing"]
-    assert "carbon_saving_t" in result
-    assert result["carbon_saving_t"] == 0.0, "Baseline carbon saving must be 0"
-    assert result["payback_years"] is None, "Baseline has zero install cost — no payback"
+    assert "carbon_saving_tco2" in result
+    assert result["carbon_saving_tco2"] == 0.0, "Baseline carbon saving must be 0"
+    assert result["simple_payback_yrs"] is None, "Baseline has zero install cost — no payback"
 
 
 def test_baseline_energy_matches_declared():
     """Baseline energy should equal the declared baseline_energy_mwh for every building."""
     for bname, building in BUILDINGS.items():
         result = run(bname, "Baseline (No Intervention)")
-        assert result["scenario_energy_mwh"] == building["baseline_energy_mwh"], (
+        assert result["annual_energy_mwh"] == building["baseline_energy_mwh"], (
             f"{bname}: baseline energy mismatch"
         )
 
@@ -67,9 +72,9 @@ def test_carbon_intensity_consistent():
     for bname, building in BUILDINGS.items():
         result = run(bname, "Baseline (No Intervention)")
         expected_carbon = round(building["baseline_energy_mwh"] * 1000 * CARBON_INTENSITY / 1000, 1)
-        assert result["baseline_carbon_t"] == expected_carbon, (
+        assert result["baseline_carbon_tco2"] == expected_carbon, (
             f"{bname}: carbon mismatch (expected {expected_carbon}, "
-            f"got {result['baseline_carbon_t']})"
+            f"got {result['baseline_carbon_tco2']})"
         )
 
 
@@ -83,18 +88,18 @@ def test_all_combinations_return_valid_results(building_name, scenario_name):
     result = run(building_name, scenario_name)
 
     required_keys = [
-        "baseline_energy_mwh", "scenario_energy_mwh", "energy_saving_mwh",
-        "energy_saving_pct", "baseline_carbon_t", "scenario_carbon_t",
-        "carbon_saving_t", "annual_saving_gbp", "install_cost_gbp",
-        "renewable_mwh", "u_wall", "u_roof", "u_glazing",
+        "baseline_energy_mwh", "annual_energy_mwh", "energy_saving_mwh",
+        "energy_saving_pct", "baseline_carbon_tco2", "scenario_carbon_tco2",
+        "carbon_saving_tco2", "cost_saving_gbp", "install_cost_gbp",
+        "renewable_kwh", "u_wall", "u_roof", "u_glazing",
     ]
     for key in required_keys:
         assert key in result, (
             f"{building_name} x {scenario_name}: missing key '{key}'"
         )
 
-    assert result["scenario_energy_mwh"] >= 0, "Energy must be non-negative"
-    assert result["baseline_carbon_t"] >= 0, "Carbon must be non-negative"
+    assert result["annual_energy_mwh"] >= 0, "Energy must be non-negative"
+    assert result["baseline_carbon_tco2"] >= 0, "Carbon must be non-negative"
     assert result["u_wall"] > 0, "U-wall must be positive"
     assert result["u_roof"] > 0, "U-roof must be positive"
     assert result["u_glazing"] > 0, "U-glazing must be positive"
@@ -113,7 +118,7 @@ def test_interventions_save_more_than_baseline(scenario_name):
         f"{scenario_name}: expected positive energy saving, "
         f"got {result['energy_saving_mwh']}"
     )
-    assert result["carbon_saving_t"] > 0, (
+    assert result["carbon_saving_tco2"] > 0, (
         f"{scenario_name}: expected positive carbon saving"
     )
 
@@ -125,15 +130,15 @@ def test_financial_calculation_solar_glass():
     """Payback period and annual saving must be internally consistent for Solar Glass."""
     result = run("Greenfield Library", "Solar Glass Installation")
     install_cost  = result["install_cost_gbp"]
-    annual_saving = result["annual_saving_gbp"]
+    annual_saving = result["cost_saving_gbp"]
 
     assert install_cost == 280000
     assert annual_saving > 0, "Solar Glass must have a positive annual saving"
 
-    if result["payback_years"] is not None:
+    if result["simple_payback_yrs"] is not None:
         calculated_payback = round(install_cost / annual_saving, 1)
-        assert abs(result["payback_years"] - calculated_payback) < 0.2, (
-            f"Payback mismatch: reported {result['payback_years']}, "
+        assert abs(result["simple_payback_yrs"] - calculated_payback) < 0.2, (
+            f"Payback mismatch: reported {result['simple_payback_yrs']}, "
             f"calculated {calculated_payback}"
         )
 
@@ -142,7 +147,21 @@ def test_baseline_has_no_install_cost():
     """Baseline scenario has zero install cost and no payback period."""
     result = run("Greenfield Library", "Baseline (No Intervention)")
     assert result["install_cost_gbp"] == 0
-    assert result["payback_years"] is None
+    assert result["simple_payback_yrs"] is None
+
+
+def test_user_tariff_changes_financial_outputs_only():
+    """Changing tariff should affect annual saving/payback but not physics energy output."""
+    building = BUILDINGS["Greenfield Library"]
+    scenario = SCENARIOS["Solar Glass Installation"]
+    weather = {"temperature_c": UK_AVG_TEMP}
+
+    low = calculate_thermal_load(building, scenario, weather, tariff_gbp_per_kwh=0.20)
+    high = calculate_thermal_load(building, scenario, weather, tariff_gbp_per_kwh=0.40)
+
+    assert low["annual_energy_mwh"] == high["annual_energy_mwh"]
+    assert high["cost_saving_gbp"] > low["cost_saving_gbp"]
+    assert high["simple_payback_yrs"] < low["simple_payback_yrs"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -156,7 +175,7 @@ def test_combined_package_best_carbon_saving():
             if sname == "Combined Package (All Interventions)":
                 continue
             other = run(bname, sname)
-            assert combined["carbon_saving_t"] >= other["carbon_saving_t"], (
+            assert combined["carbon_saving_tco2"] >= other["carbon_saving_tco2"], (
                 f"{bname}: Combined Package should match or beat {sname} on carbon savings"
             )
 
@@ -185,6 +204,22 @@ def test_all_buildings_have_required_fields():
         assert bdata["floor_area_m2"] > 0
         assert 0 < bdata["glazing_ratio"] < 1
         assert bdata["baseline_energy_mwh"] > 0
+
+
+def test_zero_floor_area_raises_value_error():
+    """Zero floor area must be rejected as non-physical."""
+    b = dict(BUILDINGS["Greenfield Library"])
+    b["floor_area_m2"] = 0
+    with pytest.raises(ValueError, match="floor_area_m2"):
+        calculate_thermal_load(b, SCENARIOS["Baseline (No Intervention)"], {"temperature_c": UK_AVG_TEMP})
+
+
+def test_invalid_u_value_raises_value_error():
+    """Extreme U-values outside plausible range must be rejected."""
+    b = dict(BUILDINGS["Greenfield Library"])
+    b["u_value_wall"] = 9.0
+    with pytest.raises(ValueError, match="u_value_wall"):
+        calculate_thermal_load(b, SCENARIOS["Baseline (No Intervention)"], {"temperature_c": UK_AVG_TEMP})
 
 
 def test_all_scenarios_have_required_fields():

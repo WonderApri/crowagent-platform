@@ -13,77 +13,80 @@
 
 import json
 import requests
+import time
 from typing import Any
+
+import config.constants as constants
+import core.physics as physics
+from config.scenarios import SCENARIOS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API & MODEL CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
-GEMINI_URL           = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_URL           = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
 MAX_OUTPUT_TOKENS    = 2000
 MAX_AGENT_LOOPS      = 10
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SYSTEM PROMPT
-# The agent's identity, knowledge, and behavioural rules
+# DYNAMIC SYSTEM PROMPT
 # ─────────────────────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """You are the CrowAgent™ AI Advisor — an expert sustainability \
-engineer embedded inside the CrowAgent™ Platform, a physics-informed campus \
-thermal intelligence system.
+REGULATORY_CONTEXT = {
+    "university_he": (
+        "SECR (Streamlined Energy & Carbon Reporting), "
+        "MEES (Minimum Energy Efficiency Standards), "
+        "Display Energy Certificates (DECs)"
+    ),
+    "smb_landlord": (
+        "MEES 2025 and 2028 compliance thresholds, "
+        "EPC Band C targets, Domestic Minimum Standard"
+    ),
+    "smb_industrial": (
+        "SECR Scope 1 and Scope 2 carbon reporting, "
+        "ISO 50001 energy management framework"
+    ),
+    "individual_selfbuild": (
+        "Part L 2021 (Conservation of Fuel and Power), "
+        "SAP/BREDEM energy modelling, Future Homes Standard"
+    ),
+}
 
-YOUR ROLE:
-You help university estate managers make evidence-based, cost-effective \
-sustainability investment decisions. You reason about buildings, run \
-physics simulations using your tools, and translate technical outputs \
-into clear, actionable recommendations.
 
-YOUR TOOLS — use them proactively, do not just answer from memory:
-• run_scenario: Run the PINN thermal model for one building + one intervention
-• compare_all_buildings: Run all buildings through one scenario simultaneously
-• find_best_for_budget: Exhaustively find the highest-ROI intervention within a budget
-• get_building_info: Retrieve full specifications for a building
-• rank_all_scenarios: Rank every intervention for a building by a chosen metric
-
-PHYSICS CONSTANTS (cite these in your answers):
-• Carbon intensity: 0.20482 kgCO₂e/kWh (BEIS 2023)
-• UK HE electricity cost: £0.28/kWh (HESA 2022-23)
-• Heating set-point: 21°C (UK Building Regulations Part L)
-• Heating season: 5,800 hours/yr (CIBSE Guide A)
-• Solar irradiance (Reading): 950 kWh/m²/yr (PVGIS)
-
-BEHAVIOUR RULES:
-1. ALWAYS use tools to get real numbers — never invent figures
-2. When asked about multiple buildings or scenarios, call the tool for each one
-3. Cite the data source for every number you quote
-4. Give a specific recommendation, not a list of options
-5. Keep answers concise — 3–5 sentences maximum unless asked for detail
-6. If a question is outside your scope (not about campus energy/sustainability),
-   politely say so in one sentence
-
-PLATFORM CONTEXT:
-Buildings: Greenfield Library, Greenfield Arts Building, Greenfield Science Block
-(Greenfield University is a FICTIONAL institution used for demonstration only.
- All building data is derived from published UK HE sector averages — not real buildings.)
-Scenarios: Baseline, Solar Glass, Green Roof, Enhanced Insulation, Combined Package
-
-MANDATORY DISCLAIMER — include a brief version in EVERY response:
-Always end recommendations with one of these phrases (adapt as appropriate):
-"⚠️ These figures are indicative only. Verify with a qualified energy surveyor before investment."
-OR
-"⚠️ Model outputs based on simplified physics — commission a site survey before proceeding."
-
-ACCURACY LIMITATIONS you must be aware of:
-1. The physics model uses simplified steady-state assumptions — real buildings are more complex
-2. Energy prices may change — financial figures assume constant £0.28/kWh
-3. Installation costs are typical ranges — actual quotes may vary significantly
-4. You are an AI and can make mistakes — never present results as definitive
-5. This platform is a working prototype — results are indicative only
-"""
-
+def build_system_prompt(segment: str, portfolio: list) -> str:
+    reg_context = REGULATORY_CONTEXT.get(
+        segment, REGULATORY_CONTEXT["university_he"]
+    )
+    portfolio_lines = []
+    for b in portfolio:
+        name   = b.get("name", "Unknown")
+        btype  = b.get("type", "Unknown")
+        area   = b.get("floor_area_m2", "N/A")
+        energy = b.get("baseline_energy_mwh", "N/A")
+        portfolio_lines.append(
+            f"  - {name} | Type: {btype} | "
+            f"Area: {area} m² | Baseline: {energy} MWh/yr"
+        )
+    portfolio_block = (
+        "\n".join(portfolio_lines)
+        if portfolio_lines
+        else "  No assets currently loaded."
+    )
+    return (
+        f"You are CrowAgent™ AI Advisor, a physics-informed sustainability "
+        f"decision intelligence assistant for UK built-environment stakeholders.\n\n"
+        f"Active segment: {segment}\n"
+        f"Applicable regulatory frameworks: {reg_context}\n\n"
+        f"Active portfolio:\n{portfolio_block}\n\n"
+        f"Instructions:\n"
+        f"- Always cite physics tool outputs when making energy claims.\n"
+        f"- Never fabricate energy figures, costs, or compliance statuses.\n"
+        f"- All outputs are indicative only. Recommend professional verification.\n"
+        f"- When tools are available, run them. Do not estimate what can be computed."
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOL SCHEMAS — sent to Gemini so it knows what tools exist and how to call them
 # ─────────────────────────────────────────────────────────────────────────────
-TOOL_DECLARATIONS = [
+AGENT_TOOLS = [
     {
         "name": "run_scenario",
         "description": (
@@ -96,10 +99,7 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "building_name": {
                     "type": "string",
-                    "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
-                    ),
+                    "description": "The name of the building to analyze. Must be one of the currently active buildings in the portfolio.",
                 },
                 "scenario_name": {
                     "type": "string",
@@ -175,10 +175,7 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "building_name": {
                     "type": "string",
-                    "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
-                    ),
+                    "description": "The name of the building to retrieve info for.",
                 },
             },
             "required": ["building_name"],
@@ -195,10 +192,7 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "building_name": {
                     "type": "string",
-                    "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
-                    ),
+                    "description": "The name of the building to rank scenarios for.",
                 },
                 "rank_by": {
                     "type": "string",
@@ -231,12 +225,12 @@ def execute_tool(
     args: dict,
     buildings: dict,
     scenarios: dict,
-    calculate_fn,
+    tariff: float = constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
 ) -> dict[str, Any]:
     """
     Execute a named tool with given args.
-    buildings, scenarios, calculate_fn are injected from the main app
-    so this module stays decoupled from Streamlit.
+    buildings and scenarios are injected from the main app.
+    Calls core.physics directly.
     """
     temp = float(args.get("temperature_c", 10.5))
     weather = {"temperature_c": temp, "wind_speed_mph": 9.2}
@@ -251,7 +245,12 @@ def execute_tool(
         if sname not in scenarios:
             return {"error": f"Scenario '{sname}' not found. "
                     f"Available: {list(scenarios.keys())}"}
-        result = calculate_fn(buildings[bname], scenarios[sname], weather)
+        try:
+            result = physics.calculate_thermal_load(
+                buildings[bname], scenarios[sname], weather, tariff
+            )
+        except Exception as exc:
+            return {"error": f"Scenario calculation failed for '{bname}' / '{sname}': {exc}"}
         result["building"] = bname
         result["scenario"] = sname
         result["temperature_c"] = temp
@@ -270,7 +269,12 @@ def execute_tool(
             return {"error": f"Scenario '{sname}' not found."}
         rows = []
         for bname, bdata in buildings.items():
-            r = calculate_fn(bdata, scenarios[sname], weather)
+            try:
+                r = physics.calculate_thermal_load(
+                    bdata, scenarios[sname], weather, tariff
+                )
+            except Exception:
+                continue
             cost = scenarios[sname]["install_cost_gbp"]
             rows.append({
                 "building":           bname,
@@ -297,7 +301,12 @@ def execute_tool(
                     continue
                 if sdata["install_cost_gbp"] > budget:
                     continue
-                r = calculate_fn(bdata, sdata, weather)
+                try:
+                    r = physics.calculate_thermal_load(
+                        bdata, sdata, weather, tariff
+                    )
+                except Exception:
+                    continue
                 if r["carbon_saving_t"] <= 0:
                     continue
                 candidates.append({
@@ -328,7 +337,7 @@ def execute_tool(
         if bname not in buildings:
             return {"error": f"Building '{bname}' not found."}
         b = buildings[bname]
-        baseline_carbon = round(b["baseline_energy_mwh"] * 1000 * 0.20482 / 1000, 1)
+        baseline_carbon = round(b["baseline_energy_mwh"] * 1000 * constants.CI_ELECTRICITY / 1000, 1)
         return {
             "building":              bname,
             "floor_area_m2":         b["floor_area_m2"],
@@ -339,7 +348,7 @@ def execute_tool(
             "u_value_glazing_wm2k":  b["u_value_glazing"],
             "baseline_energy_mwh":   b["baseline_energy_mwh"],
             "baseline_carbon_t_co2": baseline_carbon,
-            "baseline_cost_gbp_yr":  round(b["baseline_energy_mwh"] * 1000 * 0.28, 0),
+            "baseline_cost_gbp_yr":  round(b["baseline_energy_mwh"] * 1000 * constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH, 0),
             "occupancy_hours_yr":    b["occupancy_hours"],
             "built_year":            b["built_year"],
             "description":           b["description"],
@@ -353,7 +362,12 @@ def execute_tool(
             return {"error": f"Building '{bname}' not found."}
         rows = []
         for sname, sdata in scenarios.items():
-            r = calculate_fn(buildings[bname], sdata, weather)
+            try:
+                r = physics.calculate_thermal_load(
+                    buildings[bname], sdata, weather, tariff
+                )
+            except Exception:
+                continue
             cost = sdata["install_cost_gbp"]
             cpt = round(cost / max(r["carbon_saving_t"], 0.01), 1) if cost > 0 else None
             rows.append({
@@ -385,13 +399,18 @@ def execute_tool(
 # ─────────────────────────────────────────────────────────────────────────────
 # GEMINI API CALL
 # ─────────────────────────────────────────────────────────────────────────────
-def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
+def _call_gemini(
+    api_key: str,
+    messages: list,
+    system_prompt: str,
+    use_tools: bool = True,
+) -> dict:
     """
     Single Gemini API call. Returns the raw response dict.
     messages format: [{"role": "user"|"model", "parts": [...]}]
     """
     payload: dict = {
-        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": messages,
         "generationConfig": {
             "maxOutputTokens": MAX_OUTPUT_TOKENS,
@@ -400,18 +419,15 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
         },
     }
     if use_tools:
-        payload["tools"] = [{"function_declarations": TOOL_DECLARATIONS}]
+        payload["tools"] = [{"function_declarations": AGENT_TOOLS}]
         payload["tool_config"] = {
             "function_calling_config": {"mode": "AUTO"}
         }
 
     try:
-        resp = requests.post(
-            GEMINI_URL,
-            params={"key": api_key},
-            headers={"Content-Type": "application/json"},
+        resp = requests.post(GEMINI_URL, timeout=30,
+            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
             json=payload,
-            timeout=30,
         )
     except requests.exceptions.Timeout:
         return {"error": "Gemini API request timed out (30 s). Check your connection and retry."}
@@ -446,40 +462,35 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # AGENTIC LOOP
 # Think → Call tools → Observe results → Think again → Final answer
+# Yields status updates for UI transparency.
 # ─────────────────────────────────────────────────────────────────────────────
-def run_agent(
-    api_key: str,
+def run_agent_turn(
     user_message: str,
-    conversation_history: list,
-    buildings: dict,
-    scenarios: dict,
-    calculate_fn,
-    current_context: dict | None = None,
-) -> dict:
+    segment: str,
+    portfolio: list,
+    api_key: str,
+    status_widget=None,
+) -> str:
     """
     Run the full agentic loop for one user turn.
-
-    Returns:
-        {
-          "answer": str,           # final text response
-          "tool_calls": list,      # list of {name, args, result} dicts
-          "error": str | None,     # error message if something failed
-          "loops": int,            # how many iterations the agent took
-        }
+    Returns the AI's final text response as a string.
+    Raises RuntimeError on unrecoverable API errors.
     """
-    # Build the working message list for this turn
-    # Include conversation history + new user message
-    messages = list(conversation_history)
+    # Build context-aware system prompt from segment and portfolio
+    system_prompt = build_system_prompt(segment, portfolio)
 
-    # Inject current dashboard context if provided
-    ctx_text = ""
-    if current_context:
-        ctx_text = (
-            f"\n\n[CURRENT DASHBOARD STATE]\n"
-            f"Selected building: {current_context.get('building', 'unknown')}\n"
-            f"Active scenarios: {current_context.get('scenarios', [])}\n"
-            f"Current temperature: {current_context.get('temperature_c', 10.5)}°C\n"
-        )
+    # Convert portfolio list to building registry dict for tool execution
+    building_registry = {b["name"]: b for b in portfolio}
+    scenario_registry = SCENARIOS
+    tariff = constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH
+
+    # Build initial message list for this turn
+    messages: list = []
+
+    # Inject available buildings context to help the agent know valid tool arguments
+    b_names = list(building_registry.keys())
+    b_list = ", ".join(f"'{name}'" for name in b_names)
+    ctx_text = f"\n\n[System Context: Active buildings: {b_list}]" if b_names else ""
 
     messages.append({
         "role": "user",
@@ -489,29 +500,20 @@ def run_agent(
     tool_calls_log = []
     loops = 0
 
+    if status_widget:
+        status_widget.update(label="⚙️ Connecting to Gemini API...")
+
     while loops < MAX_AGENT_LOOPS:
         loops += 1
-        response = _call_gemini(api_key, messages, use_tools=True)
+        response = _call_gemini(api_key, messages, system_prompt, use_tools=True)
 
         # Handle API error
         if "error" in response:
-            return {
-                "answer": None,
-                "tool_calls": tool_calls_log,
-                "error": response["error"],
-                "loops": loops,
-                "updated_history": messages,
-            }
+            raise RuntimeError(response["error"])
 
         candidates = response.get("candidates", [])
         if not candidates:
-            return {
-                "answer": "I couldn't generate a response. Please try again.",
-                "tool_calls": tool_calls_log,
-                "error": "No candidates in Gemini response",
-                "loops": loops,
-                "updated_history": messages,
-            }
+            raise RuntimeError("No candidates in Gemini response")
 
         content = candidates[0].get("content", {})
         parts   = content.get("parts", [])
@@ -525,17 +527,21 @@ def run_agent(
             # Add model's message (containing function calls) to history
             messages.append({"role": "model", "parts": parts})
 
+            if status_widget:
+                status_widget.update(label="🔬 Running thermal simulation...")
+
             # Execute each function call and collect results
             function_results = []
             for fc_part in function_calls:
-                fc   = fc_part["functionCall"]
-                name = fc["name"]
+                fc    = fc_part["functionCall"]
+                name  = fc["name"]
                 fargs = fc.get("args", {})
 
                 # Execute the tool
                 result = execute_tool(
-                    name, fargs, buildings, scenarios, calculate_fn
+                    name, fargs, building_registry, scenario_registry, tariff
                 )
+
                 tool_calls_log.append({
                     "name": name,
                     "args": fargs,
@@ -551,7 +557,7 @@ def run_agent(
 
             # Add function results back into the conversation
             messages.append({
-                "role": "user",
+                "role": "function",
                 "parts": function_results,
             })
             # Loop continues — agent sees results and decides next step
@@ -561,61 +567,30 @@ def run_agent(
             final_text = " ".join(p["text"] for p in text_parts if p.get("text"))
             # Add model's final response to history
             messages.append({"role": "model", "parts": parts})
-            return {
-                "answer": final_text.strip(),
-                "tool_calls": tool_calls_log,
-                "error": None,
-                "loops": loops,
-                "updated_history": messages,
-            }
+
+            if status_widget:
+                status_widget.update(label="📝 Generating recommendation...")
+
+            return final_text.strip()
 
         else:
             # Unexpected response structure
-            return {
-                "answer": "I received an unexpected response. Please try again.",
-                "tool_calls": tool_calls_log,
-                "error": "No text or function_call in response parts",
-                "loops": loops,
-                "updated_history": messages,
-            }
+            return "I received an unexpected response. Please try again."
 
     # Hit max loops — ask Gemini to summarise what it found so far
+    if status_widget:
+        status_widget.update(label="📝 Generating recommendation...")
+
     messages.append({
         "role": "user",
         "parts": [{"text": "Please summarise your findings so far in 3 sentences."}]
     })
-    final_resp = _call_gemini(api_key, messages, use_tools=False)
-    if "error" not in final_resp:
+    final_resp = _call_gemini(api_key, messages, system_prompt, use_tools=False)
+    summarisation_error = final_resp.get("error")
+    if not summarisation_error:
         parts = final_resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
         text = " ".join(p.get("text", "") for p in parts)
-        return {
-            "answer": text.strip() or "Analysis complete — see tool results above.",
-            "tool_calls": tool_calls_log,
-            "error": None,
-            "loops": loops,
-            "updated_history": messages,
-        }
+        return text.strip() or "Analysis complete — see tool results above."
 
-    return {
-        "answer": "Reached maximum reasoning steps. See tool results above.",
-        "tool_calls": tool_calls_log,
-        "error": None,
-        "loops": loops,
-        "updated_history": messages,
-    }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SUGGESTED STARTER QUESTIONS
-# Shown in the UI when conversation is empty
-# ─────────────────────────────────────────────────────────────────────────────
-STARTER_QUESTIONS = [
-    "Which building should we upgrade first if we have £100,000?",
-    "What's the fastest payback intervention across all buildings?",
-    "How much CO₂ would a green roof save on the Science Block?",
-    "Compare solar glass across all three buildings",
-    "What's the cheapest way to reach a 30% carbon reduction?",
-    "Explain the physics behind the insulation upgrade calculation",
-    "Which single intervention gives the best cost per tonne of CO₂?",
-    "If energy prices rise to £0.40/kWh, does that change the best option?",
-]
+    # Summarisation itself failed — surface the error so the UI can display it
+    return "Reached maximum reasoning steps. See tool results above."

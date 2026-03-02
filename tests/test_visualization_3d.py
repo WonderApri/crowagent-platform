@@ -16,6 +16,7 @@ def test_import_and_basic_functions(monkeypatch):
     assert hasattr(visualization_3d, "render_3d_energy_map")
     assert hasattr(visualization_3d, "render_4d_carbon_timeline")
     assert hasattr(visualization_3d, "fetch_osm_buildings")
+    assert hasattr(visualization_3d, "fetch_osm_roads")
 
     # dummy building data
     data = [
@@ -31,6 +32,7 @@ def test_import_and_basic_functions(monkeypatch):
             raise Exception("fail")
     monkeypatch.setattr(visualization_3d.overpy, "Overpass", lambda: Dummy())
     assert visualization_3d.fetch_osm_buildings(0.0, 0.0) == []
+    assert visualization_3d.fetch_osm_roads(0.0, 0.0) == []
 
 
 @pytest.mark.parametrize("month", range(1, 13))

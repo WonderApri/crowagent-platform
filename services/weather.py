@@ -24,6 +24,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
+class WeatherFetchError(RuntimeError):
+    """Raised when all weather providers fail and manual fallback is unavailable."""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MODULE CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -267,7 +271,7 @@ def test_met_office_key(
         if resp.status_code in (401, 403):
             return False, f"API rejected the key (HTTP {resp.status_code})."
         return False, f"Unexpected response (HTTP {resp.status_code})."
-    except Exception as exc:
+    except requests.RequestException as exc:
         return False, f"Network error: {exc}"
 
 
@@ -283,10 +287,8 @@ def test_openweathermap_key(
     if not api_key:
         return False, "No API key provided."
     try:
-        resp = requests.get(
-            OWM_BASE_URL,
+        resp = requests.get(OWM_BASE_URL, timeout=8,
             params={"lat": lat, "lon": lon, "appid": api_key, "units": "metric"},
-            timeout=6,
         )
         if resp.status_code == 200:
             return True, "Valid OpenWeatherMap key."
@@ -295,7 +297,7 @@ def test_openweathermap_key(
         if resp.status_code == 429:
             return False, "Rate limit exceeded (HTTP 429) — key may be valid."
         return False, f"Unexpected response (HTTP {resp.status_code})."
-    except Exception as exc:
+    except requests.RequestException as exc:
         return False, f"Network error: {exc}"
 
 
@@ -326,7 +328,7 @@ def get_weather(
     valid BYOK key will still be used first when ``enable_fallback`` is True.
 
     Caching: each underlying fetch function is decorated with
-    ``st.cache_data`` (TTL=%d seconds) to limit rate‑limit exposure.
+    ``st.cache_data`` (TTL=3600 seconds) to limit rate‑limit exposure.
 
     Parameters
     ----------
@@ -339,7 +341,7 @@ def get_weather(
     enable_fallback     : Fall back to next provider or Open-Meteo on failure
     manual_temp_c       : Manual temperature when all APIs unavailable
     force_refresh       : Clear caches and fetch immediately
-    """% (CACHE_TTL_SECONDS,)
+    """
     if force_refresh:
         _fetch_open_meteo.clear()
         _fetch_met_office.clear()
@@ -363,37 +365,33 @@ def get_weather(
         if prov == "met_office":
             try:
                 return _fetch_met_office(met_office_key, met_office_location, location_name)
-            except Exception as exc:
+            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
                 if enable_fallback:
-                    st.caption(
-                        f"ℹ️ Met Office unavailable ({type(exc).__name__}) "
-                        f"— falling back to next provider"
+                    st.warning(
+                        f"Met Office unavailable ({type(exc).__name__}). Falling back."
                     )
                     continue
                 else:
-                    raise
+                    raise WeatherFetchError("Met Office DataPoint request failed.") from exc
         elif prov == "openweathermap":
             try:
                 return _fetch_openweathermap(openweathermap_key, lat, lon, location_name)
-            except Exception as exc:
+            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
                 if enable_fallback:
-                    st.caption(
-                        f"ℹ️ OpenWeatherMap unavailable ({type(exc).__name__}) "
-                        f"— falling back to next provider"
+                    st.warning(
+                        f"OpenWeatherMap unavailable ({type(exc).__name__}). Falling back."
                     )
                     continue
                 else:
-                    raise
+                    raise WeatherFetchError("OpenWeatherMap request failed.") from exc
         else:  # open_meteo
             try:
                 return _fetch_open_meteo(lat, lon, location_name)
-            except Exception as exc:
-                # failed at final provider; drop through to manual fallback
-                st.caption(
-                    f"ℹ️ Open-Meteo unavailable ({type(exc).__name__}) "
-                    f"— using manual override"
+            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
+                st.warning(
+                    f"Open-Meteo unavailable ({type(exc).__name__}). Using manual override."
                 )
-                break
+                break # drop to manual
 
     # ── Manual fallback (offline / all APIs down) ─────────────────────────
     return {
