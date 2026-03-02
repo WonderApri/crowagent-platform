@@ -1,0 +1,38 @@
+name: CrowAgent™ CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov bandit flake8 pip-audit
+
+      - name: Lint (flake8)
+        run: flake8 . --max-line-length=100 --count --select=E --show-source --statistics
+
+      - name: Security scan (bandit)
+        run: bandit -r . -ll --exit-zero
+
+      - name: Dependency audit
+        run: pip-audit --exit-zero
+
+      - name: Run tests
+        run: pytest tests/ -v --cov=core --cov=services --cov-report=term-missing
+
+      - name: Coverage gate (80% minimum on core modules)
+        run: pytest tests/ --cov=core --cov-fail-under=80
