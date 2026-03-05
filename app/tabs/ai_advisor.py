@@ -113,7 +113,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         "analyze ROI, and check regulatory compliance."
     )
 
-    # 5c. STARTER PROMPTS (always shown)
+    # 5c. STARTER PROMPTS
     prompts = STARTER_PROMPTS.get(segment, STARTER_PROMPTS["university_he"])
     st.markdown("**Suggested Queries for your Portfolio:**")
     for prompt in prompts:
@@ -127,16 +127,6 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
             )
             st.rerun()
 
-    # 5f. CHAT INPUT (moved up)
-    user_input = st.chat_input(
-        "Ask about your portfolio, energy expenses, or compliance..."
-    )
-    if user_input:
-        st.session_state.ai_chat_history.append(
-            {"role": "user", "content": user_input}
-        )
-        st.rerun()
-
     # 5d. CHAT HISTORY DISPLAY
     for msg in st.session_state.ai_chat_history:
         with st.chat_message(msg["role"]):
@@ -147,14 +137,27 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     if history and history[-1]["role"] == "user":
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                response = run_agent_turn(
-                    user_message=history[-1]["content"],
-                    segment=segment,
-                    portfolio=portfolio,
-                    api_key=api_key,
-                )
-                st.markdown(response)
+                try:
+                    response = run_agent_turn(
+                        user_message=history[-1]["content"],
+                        segment=segment,
+                        portfolio=portfolio,
+                        api_key=api_key,
+                    )
+                except RuntimeError as e:
+                    response = f"An error occurred while trying to answer your question. \n\n**Error details:**\n`{e}`"
+
+            st.markdown(response)
+            st.session_state.ai_chat_history.append(
+                {"role": "assistant", "content": response}
+            )
+            st.rerun()
+
+    # 5f. CHAT INPUT
+    if user_input := st.chat_input(
+        "Ask about your portfolio, energy expenses, or compliance..."
+    ):
         st.session_state.ai_chat_history.append(
-            {"role": "assistant", "content": response}
+            {"role": "user", "content": user_input}
         )
         st.rerun()
