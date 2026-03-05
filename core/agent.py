@@ -422,6 +422,21 @@ def _call_gemini(
     Single Gemini API call with schema fallbacks for API-version differences.
     messages format: [{"role": "user"|"model", "parts": [...]}]
     """
+    payload: dict = {
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents": messages,
+        "generationConfig": {
+            "maxOutputTokens": MAX_OUTPUT_TOKENS,
+            "temperature": 0.2,   # low = consistent, factual answers
+            "topP": 0.8,
+        },
+    }
+    if use_tools:
+        payload["tools"] = [{"functionDeclarations": AGENT_TOOLS}]
+        payload["toolConfig"] = {
+            "functionCallingConfig": {"mode": "AUTO"}
+        }
+
     # API Key validation and sanitization for debugging
     if not api_key or not isinstance(api_key, str):
         print("--- GEMINI API DEBUG ---")
