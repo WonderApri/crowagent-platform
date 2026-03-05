@@ -27,7 +27,7 @@ GEMINI_URL           = "https://generativelanguage.googleapis.com/v1/models/gemi
 MAX_OUTPUT_TOKENS    = 2000
 MAX_AGENT_LOOPS      = 10
 
-def build_system_prompt(portfolio: list, segment: str) -> str:
+def build_system_prompt(segment: str, portfolio: list) -> str:
     """
     Builds a dynamic, context-aware system prompt for the AI Advisor.
 
@@ -39,17 +39,17 @@ def build_system_prompt(portfolio: list, segment: str) -> str:
         A formatted string to be used as the system prompt for the Gemini model.
     """
     # 1. Dashboard Aggregation: Calculate totals from the portfolio.
-    total_area = sum(b.get("floor_area_m2", 0) for b in portfolio)
-    total_energy = sum(b.get("baseline_energy_mwh", 0) for b in portfolio)
+    total_area = sum(b.get("floor_area_m2", 0) or 0 for b in portfolio)
+    total_energy = sum(b.get("baseline_energy_mwh", 0) or 0 for b in portfolio)
 
     if portfolio:
         building_list = []
         for b in portfolio:
             name = b.get("name", "Unnamed Asset")
-            area = b.get("floor_area_m2", "N/A")
-            energy = b.get("baseline_energy_mwh", "N/A")
+            area = b.get("floor_area_m2", 0) or 0
+            energy = b.get("baseline_energy_mwh", 0) or 0
             building_list.append(
-                f"- **{name}**: {area:,} m², {energy:,} MWh/yr"
+                f"- **{name}**: {area:,.0f} m², {energy:,.0f} MWh/yr"
             )
         portfolio_summary = (
             "**Portfolio Summary:**\n"

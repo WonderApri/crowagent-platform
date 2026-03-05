@@ -71,6 +71,7 @@ def _render_segment_gate():
             st.markdown("Campus estate management, decarbonisation planning, SECR & TCFD reporting.")
             if st.button("Select University Profile", key="btn_seg_uni", use_container_width=True, type="primary"):
                 st.session_state.user_segment = "university_he"
+                st.session_state.portfolio = []
                 st.rerun()
 
     with cols[1]:
@@ -79,6 +80,7 @@ def _render_segment_gate():
             st.markdown("Office blocks, retail parks, mixed-use developments. MEES compliance focus.")
             if st.button("Select Landlord Profile", key="btn_seg_landlord", use_container_width=True, type="primary"):
                 st.session_state.user_segment = "smb_landlord"
+                st.session_state.portfolio = []
                 st.rerun()
 
     cols2 = st.columns(2)
@@ -89,6 +91,7 @@ def _render_segment_gate():
             st.markdown("Manufacturing, logistics, warehousing. Scope 1 & 2 carbon baselining.")
             if st.button("Select Industrial Profile", key="btn_seg_ind", use_container_width=True, type="primary"):
                 st.session_state.user_segment = "smb_industrial"
+                st.session_state.portfolio = []
                 st.rerun()
 
     with cols2[1]:
@@ -97,6 +100,7 @@ def _render_segment_gate():
             st.markdown("Single dwelling retrofit, heat pump sizing, Part L & Future Homes Standard.")
             if st.button("Select Self-Build Profile", key="btn_seg_self", use_container_width=True, type="primary"):
                 st.session_state.user_segment = "individual_selfbuild"
+                st.session_state.portfolio = []
                 st.rerun()
 
 
@@ -231,5 +235,3 @@ def render_ai_advisor(handler, weather_data: Dict[str, Any]):
                 st.rerun()
             except Exception as e:
                 st.error(f"AI Error: {str(e)}")
-
-

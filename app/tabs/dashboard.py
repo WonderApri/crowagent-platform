@@ -148,6 +148,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
             st.rerun()
         if c3.button("🏠 Home", use_container_width=True):
             st.session_state.user_segment = None
+            st.session_state.portfolio = []
             st.rerun()
 
     # 1. Filter portfolio for this segment
