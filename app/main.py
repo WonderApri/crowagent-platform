@@ -183,16 +183,8 @@ def _page_about() -> None:
 
 def _render_segment_gate() -> None:
     """In-page segment selector (no sidebar dependency)."""
-    branding.render_page_logo()
     st.markdown("## Welcome to CrowAgent™")
     st.caption("Select your profile to configure portfolio defaults and compliance context.")
-
-    descriptions = {
-        "university_he": "Campus estate management, SECR and decarbonisation planning.",
-        "smb_landlord": "Commercial landlord compliance, MEES and EPC uplift strategy.",
-        "smb_industrial": "Industrial energy optimisation, carbon baseline and retrofit planning.",
-        "individual_selfbuild": "Part L/FHS guidance for self-build and home retrofit pathways.",
-    }
 
     cols = st.columns(2)
     items = list(SEGMENT_LABELS.items())
@@ -200,8 +192,7 @@ def _render_segment_gate() -> None:
         with cols[idx % 2]:
             with st.container(border=True):
                 st.markdown(f"### {label}")
-                st.caption(descriptions.get(seg_id, ""))
-                if st.button("Select Profile", key=f"seg_{seg_id}", use_container_width=True, type="primary"):
+                if st.button("Select", key=f"seg_{seg_id}", use_container_width=True):
                     st.session_state["user_segment"] = seg_id
                     st.session_state["portfolio"] = []
                     st.rerun()
