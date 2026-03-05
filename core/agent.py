@@ -429,9 +429,28 @@ def _call_gemini(
             "function_calling_config": {"mode": "AUTO"}
         }
 
+    # API Key validation and sanitization for debugging
+    if not api_key or not isinstance(api_key, str):
+        print("--- GEMINI API DEBUG ---")
+        print("CRITICAL: API key is missing or not a string.")
+        print("--- END DEBUG ---")
+        return {"error": "Gemini API key is missing."}
+    
+    clean_api_key = api_key.strip()
+    if len(clean_api_key) != 39:
+        print("--- GEMINI API DEBUG ---")
+        print(f"WARNING: API key length is {len(clean_api_key)}, expected 39. Key might be truncated.")
+        print(f"Key used: '{clean_api_key[:5]}...{clean_api_key[-4:]}'")
+        print("--- END DEBUG ---")
+    if not clean_api_key.startswith("AIza"):
+        print("--- GEMINI API DEBUG ---")
+        print("WARNING: API key does not start with 'AIza'. It may be invalid.")
+        print(f"Key prefix: '{clean_api_key[:4]}'")
+        print("--- END DEBUG ---")
+
     try:
         resp = requests.post(GEMINI_URL, timeout=30,
-            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+            headers={"Content-Type": "application/json", "x-goog-api-key": clean_api_key},
             json=payload,
         )
     except requests.exceptions.Timeout:
@@ -442,6 +461,13 @@ def _call_gemini(
         return {"error": f"Gemini API request failed: {exc}"}
 
     if resp.status_code != 200:
+        # Aggressive debug logging on failure
+        print("\n--- GEMINI API DEBUG ---")
+        print(f"URL: {GEMINI_URL}")
+        print(f"Status Code: {resp.status_code}")
+        print(f"Raw Response Text: {resp.text}")
+        print("--- END DEBUG ---\n")
+
         error_msg = "Unknown error"
         try:
             error_data = resp.json()
