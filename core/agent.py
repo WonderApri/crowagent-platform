@@ -74,7 +74,7 @@ def build_system_prompt(segment: str, portfolio: list) -> str:
     # 3. Segment Lock & Core Instructions
     instructions = f"""**CRITICAL INSTRUCTIONS:**
 1.  **Segment Focus:** Your advice **MUST** be strictly tailored to the user's active segment: **'{segment}'**. All compliance rules, regulations, and recommendations must be relevant to this segment only. Do not discuss rules for other segments.
-2.  **Regulatory Links:** When discussing UK regulation, you **MUST** provide a valid, official external URL and include official references. Prioritise these links where relevant:
+2.  **Regulatory Links:** When discussing UK regulation, include official references. Prioritise these links where relevant:
     - EPC register: https://www.gov.uk/find-energy-certificate
     - MEES landlord guidance: https://www.gov.uk/guidance/domestic-private-rented-property-minimum-energy-efficiency-standard-landlord-guidance
     - Part L approved document: https://www.gov.uk/government/publications/conservation-of-fuel-and-power-approved-document-l
@@ -427,6 +427,21 @@ def _call_gemini(
     Single Gemini API call with schema fallbacks for API-version differences.
     messages format: [{"role": "user"|"model", "parts": [...]}]
     """
+    payload: dict = {
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents": messages,
+        "generationConfig": {
+            "maxOutputTokens": MAX_OUTPUT_TOKENS,
+            "temperature": 0.2,   # low = consistent, factual answers
+            "topP": 0.8,
+        },
+    }
+    if use_tools:
+        payload["tools"] = [{"functionDeclarations": AGENT_TOOLS}]
+        payload["toolConfig"] = {
+            "functionCallingConfig": {"mode": "AUTO"}
+        }
+
     # API Key validation and sanitization for debugging
     if not api_key or not isinstance(api_key, str):
         print("--- GEMINI API DEBUG ---")
@@ -540,44 +555,6 @@ def _call_gemini(
             break
 
     return {"error": last_error or "Gemini API request failed."}
-
-
-
-def _invoke_gemini_with_compat(api_key: str, messages: list, system_prompt: str, use_tools: bool) -> dict:
-    """Call _call_gemini while tolerating legacy monkeypatched signatures in tests."""
-    try:
-        return _call_gemini(api_key, messages, system_prompt, use_tools=use_tools)
-    except TypeError:
-        # legacy signature: _call_gemini(api_key, messages, use_tools=True)
-        return _call_gemini(api_key, messages, use_tools=use_tools)
-
-
-def run_agent(
-    api_key: str,
-    user_message: str,
-    conversation_history: list | None = None,
-    buildings: dict | None = None,
-    scenarios: dict | None = None,
-    calculate_fn=None,
-    current_context: dict | None = None,
-) -> dict:
-    """Backward-compatible wrapper expected by legacy tests/callers."""
-    _ = (conversation_history, scenarios, calculate_fn, current_context)
-    portfolio = []
-    for bname, bdata in (buildings or {}).items():
-        item = dict(bdata)
-        item.setdefault("name", bname)
-        item.setdefault("description", "")
-        portfolio.append(item)
-    answer = run_agent_turn(
-        user_message=user_message,
-        segment="university_he",
-        portfolio=portfolio,
-        api_key=api_key,
-    )
-    if isinstance(answer, str) and answer.startswith("Reached maximum reasoning steps"):
-        return {"answer": answer, "error": "Max loops reached and summarisation failed.", "loops": MAX_AGENT_LOOPS}
-    return {"answer": answer, "error": None, "loops": MAX_AGENT_LOOPS}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
