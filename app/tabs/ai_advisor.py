@@ -56,6 +56,17 @@ STARTER_PROMPTS = {
 def render(handler, weather: dict, portfolio: list[dict]) -> None:
     """Renders the AI Advisor tab."""
 
+    # Segment reset guard: if user segment changed, clear advisor histories immediately.
+    current_segment = st.session_state.get("user_segment", "university_he")
+    if "last_advisor_segment" not in st.session_state:
+        st.session_state["last_advisor_segment"] = current_segment
+    if st.session_state["last_advisor_segment"] != current_segment:
+        st.session_state["ai_chat_history"] = []
+        st.session_state["agent_history"] = []
+        st.session_state["chat_history"] = []
+        st.session_state.setdefault("ai_chat_history_by_segment", {})[current_segment] = []
+        st.session_state["last_advisor_segment"] = current_segment
+
     # Legacy/session compatibility keys must exist even in locked mode
     if "ai_chat_history" not in st.session_state:
         st.session_state["ai_chat_history"] = st.session_state.get("chat_history", [])
@@ -117,20 +128,6 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
 
     if "ai_chat_history_by_segment" not in st.session_state:
         st.session_state["ai_chat_history_by_segment"] = {}
-
-    # If the segment changed since advisor was last opened, clear advisor memory.
-    if last_segment is not None and current_segment != last_segment:
-        st.session_state["ai_chat_history"] = []
-        st.session_state["agent_history"] = []
-        st.session_state["chat_history"] = []
-        st.session_state["ai_chat_history_by_segment"][current_segment] = []
-
-    # Track current segment (plus legacy key for backward compatibility).
-    st.session_state["ai_advisor_last_segment"] = current_segment
-    st.session_state["last_advisor_segment"] = current_segment
-
-    st.session_state.setdefault("ai_chat_history", [])
-    st.session_state.setdefault("chat_history", st.session_state["ai_chat_history"])
 
     api_key = st.session_state.get("gemini_key", "")
     segment = current_segment
