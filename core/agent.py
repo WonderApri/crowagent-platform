@@ -551,6 +551,21 @@ def _call_gemini(
     return {"error": last_error or "Gemini API request failed."}
 
 
+def _invoke_gemini_with_compat(
+    api_key: str,
+    messages: list,
+    system_prompt: str,
+    use_tools: bool = True,
+) -> dict:
+    """Compatibility wrapper retained for legacy call sites."""
+    return _call_gemini(
+        api_key=api_key,
+        messages=messages,
+        system_prompt=system_prompt,
+        use_tools=use_tools,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # AGENTIC LOOP
 # Think → Call tools → Observe results → Think again → Final answer

@@ -122,16 +122,15 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
 
     # ── BLOCK 5: ACTIVE CHAT STATE ────────────────────────────────────────────
 
-    # 5a. Get required data from session state
-    if "chat_history" not in st.session_state:
-        st.session_state["chat_history"] = st.session_state.get("ai_chat_history", [])
-    if "ai_chat_history" not in st.session_state:
-        st.session_state["ai_chat_history"] = st.session_state["chat_history"]
+    # 5a. Get required data from session state & handle segment resets
+    current_segment = st.session_state.get("user_segment", "university_he")
+    last_segment = st.session_state.get("ai_advisor_last_segment")
+
     if "ai_chat_history_by_segment" not in st.session_state:
         st.session_state["ai_chat_history_by_segment"] = {}
 
     api_key = st.session_state.get("gemini_key", "")
-    segment = st.session_state.get("user_segment", "university_he")
+    segment = current_segment
     segment_name = st.session_state.get("current_segment_name", "University / Higher Education")
     portfolio = st.session_state.get("portfolio", [])
 
