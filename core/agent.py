@@ -23,10 +23,10 @@ from config.scenarios import SCENARIOS
 # ─────────────────────────────────────────────────────────────────────────────
 # API & MODEL CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
-GEMINI_URL           = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
+GEMINI_URL           = "https://generativelanguage.googleapis.com/v1/models/gemini-flash-latest:generateContent"
 GEMINI_FALLBACK_URLS = [
     GEMINI_URL,
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
 ]
 MAX_OUTPUT_TOKENS    = 2000
 MAX_AGENT_LOOPS      = 10
