@@ -270,7 +270,10 @@ def execute_tool(
     buildings and scenarios are injected from the main app.
     Calls core.physics directly.
     """
-    temp = float(args.get("temperature_c", 10.5))
+    try:
+        temp = float(args.get("temperature_c", 10.5))
+    except (ValueError, TypeError):
+        temp = 10.5
     weather = {"temperature_c": temp, "wind_speed_mph": 9.2}
     calc = calculate_fn or physics.calculate_thermal_load
 
@@ -307,12 +310,14 @@ def execute_tool(
         if sname not in scenarios:
             return {"error": f"Scenario '{sname}' not found."}
         rows = []
+        errors = []
         for bname, bdata in buildings.items():
             try:
                 r = calc(
                     bdata, scenarios[sname], weather, tariff
                 )
-            except Exception:
+            except Exception as exc:
+                errors.append({"building": bname, "error": str(exc)})
                 continue
             cost = scenarios[sname]["install_cost_gbp"]
             rows.append({
@@ -328,12 +333,13 @@ def execute_tool(
                                       if cost > 0 else None,
             })
         rows.sort(key=lambda x: x["carbon_saving_t"], reverse=True)
-        return {"scenario": sname, "results": rows, "temperature_c": temp}
+        return {"scenario": sname, "results": rows, "temperature_c": temp, "calculation_errors": errors}
 
     # ── Tool: find_best_for_budget ────────────────────────────────────────────
     elif name == "find_best_for_budget":
         budget = float(args["budget_gbp"])
         candidates = []
+        errors = []
         for bname, bdata in buildings.items():
             for sname, sdata in scenarios.items():
                 if sdata["install_cost_gbp"] <= 0:
@@ -344,7 +350,8 @@ def execute_tool(
                     r = calc(
                         bdata, sdata, weather, tariff
                     )
-                except Exception:
+                except Exception as exc:
+                    errors.append({"building": bname, "scenario": sname, "error": str(exc)})
                     continue
                 if r["carbon_saving_t"] <= 0:
                     continue
@@ -361,13 +368,17 @@ def execute_tool(
                     ),
                 })
         if not candidates:
-            return {"error": f"No scenarios fit within £{budget:,.0f} budget."}
+            error_message = f"No scenarios fit within £{budget:,.0f} budget."
+            if errors:
+                error_message += " Some calculations also failed."
+            return {"error": error_message, "calculation_errors": errors}
         candidates.sort(key=lambda x: x["cost_per_tonne_co2"])
         return {
             "budget_gbp": budget,
             "top_recommendation": candidates[0],
             "all_options_ranked": candidates[:5],
             "temperature_c": temp,
+            "calculation_errors": errors,
         }
 
     # ── Tool: get_building_info ───────────────────────────────────────────────
@@ -400,12 +411,14 @@ def execute_tool(
         if bname not in buildings:
             return {"error": f"Building '{bname}' not found."}
         rows = []
+        errors = []
         for sname, sdata in scenarios.items():
             try:
                 r = calc(
                     buildings[bname], sdata, weather, tariff
                 )
-            except Exception:
+            except Exception as exc:
+                errors.append({"scenario": sname, "error": str(exc)})
                 continue
             cost = sdata["install_cost_gbp"]
             cpt = round(cost / max(r["carbon_saving_t"], 0.01), 1) if cost > 0 else None
@@ -430,6 +443,7 @@ def execute_tool(
             "building":  bname,
             "ranked_by": rank_by,
             "scenarios": rows,
+            "calculation_errors": errors,
         }
 
     elif name == "list_buildings":
