@@ -262,8 +262,7 @@ See `SECURITY_GUIDE.md` for safe handling of API keys and configuration.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
+This project is proprietary. See the LICENSE file for full terms.
 ---
 
 *v2.1.0 · 7 March 2026 · Working Prototype*
