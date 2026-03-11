@@ -19,7 +19,6 @@ if str(ROOT) not in sys.path:
 
 import logging
 import os
-import sys
 
 import streamlit as st
 
@@ -27,7 +26,26 @@ import app.branding as branding
 import app.session as session
 
 # ── set_page_config — MUST be the very first Streamlit call ─────────────────
-st.set_page_config(**branding.PAGE_CONFIG)
+st.set_page_config(
+    page_title = "CrowAgent — Sustainability Intelligence",
+    page_icon  = "assets/favicon.png",
+    layout     = "wide",
+    initial_sidebar_state = "collapsed",
+)
+
+st.markdown("""
+<style>
+  .stApp { background-color: #05101E; }
+  section[data-testid="stSidebar"] { background-color: #0A1F3A !important; border-right: 1px solid rgba(12,201,168,0.15) !important; }
+  h1, h2, h3 { font-family: sans-serif !important; font-weight: 800 !important; color: #E4ECF7 !important; }
+  h2 { color: #0CC9A8 !important; }
+  .stButton > button { background-color: #0CC9A8 !important; color: #05101E !important; font-weight: 700 !important; border: none !important; border-radius: 10px !important; }
+  .stButton > button:hover { background-color: #C2FF57 !important; }
+  div[data-testid="stMetric"] { background-color: #0A1F3A !important; border: 1px solid rgba(12,201,168,0.15) !important; border-radius: 14px !important; padding: 20px !important; }
+  div[data-testid="stMetricValue"] { color: #0CC9A8 !important; font-weight: 800 !important; }
+  #MainMenu, footer, header { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
 
 # ── Remaining imports (after set_page_config) ────────────────────────────────
 import app.tabs.dashboard as tab_dashboard
@@ -62,12 +80,12 @@ def _load_logo_uri() -> str:
     Searches CWD-relative asset paths so the loader works even when
     Streamlit copies the script to a temporary directory.
     """
-    return branding._load_asset_uri("CrowAgent_Logo_Horizontal_Dark.svg")
+    return branding._load_asset_uri("logo.png")
 
 
 def _load_icon_uri() -> str:
     """Return the square CrowAgent™ icon as a base64 data URI."""
-    return branding._load_asset_uri("CrowAgent_Icon_Square.svg")
+    return branding._load_asset_uri("favicon.png")
 
 
 def _add_building_from_json(json_str: str) -> tuple[bool, str]:

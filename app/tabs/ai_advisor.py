@@ -2,9 +2,10 @@
 # CrowAgent™ Platform — AI Advisor Tab
 # © 2026 Aparajita Parihar. All rights reserved.
 #
-# Independent research project. Not affiliated with any institution.
+ # CrowAgent™ Platform is an independent research and development project created by Aparajita Parihar.
+ # It is not endorsed by, affiliated with, or sponsored by the University of Reading or any other institution.
 # Not licensed for commercial use without written permission of the author.
-# Trademark rights reserved pending UK IPO registration — Class 42.
+ # CrowAgent™ is a trademark of Aparajita Parihar. Trademark application filed with the UK Intellectual Property Office (UK IPO), Class 42. Registration pending.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import streamlit as st
@@ -120,7 +121,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
 4. Paste it into the **API Keys** section in the **Settings** tab.
 """)
             st.caption("Free tier · 1,500 requests/day · No credit card required.")
-            st.image("assets/CrowAgent_Logo_Horizontal_Dark.svg", width=200)
+            st.image("assets/logo.png", width=200)
         return
 
     # ── BLOCK 5: ACTIVE CHAT STATE ────────────────────────────────────────────

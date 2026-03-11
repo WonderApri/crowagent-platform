@@ -496,6 +496,16 @@ logger = logging.getLogger(__name__)
 
 def _load_asset_uri(filename: str) -> str:
     """Resolves an asset path and returns a base64-encoded data URI."""
+    ext = Path(filename).suffix.lower()
+    mime_map = {
+        ".svg":  "image/svg+xml",
+        ".png":  "image/png",
+        ".jpg":  "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif":  "image/gif",
+        ".webp": "image/webp",
+    }
+    mime = mime_map.get(ext, "image/png")
     candidate_paths = [
         Path("assets") / filename,
         Path("app/assets") / filename,
@@ -506,7 +516,7 @@ def _load_asset_uri(filename: str) -> str:
             with open(path, "rb") as f:
                 data = f.read()
             b64 = base64.b64encode(data).decode("utf-8")
-            return f"data:image/svg+xml;base64,{b64}"
+            return f"data:{mime};base64,{b64}"
     logger.warning(
         "Asset not found: %s. Searched: %s", filename, [str(p) for p in candidate_paths]
     )
@@ -516,13 +526,13 @@ def _load_asset_uri(filename: str) -> str:
 @st.cache_resource
 def get_logo_uri() -> str:
     """Returns the base64 data URI for the horizontal CrowAgent™ logo."""
-    return _load_asset_uri("CrowAgent_Logo_Horizontal_Dark.svg")
+    return _load_asset_uri("logo.png")
 
 
 @st.cache_resource
 def get_icon_uri() -> str:
     """Returns the base64 data URI for the square CrowAgent™ icon."""
-    return _load_asset_uri("CrowAgent_Icon_Square.svg")
+    return _load_asset_uri("favicon.png")
 
 
 # ── Injection helpers ────────────────────────────────────────────────────────
@@ -615,7 +625,7 @@ def render_footer() -> None:
             <div class="footer-links">
                 © 2026 CrowAgent™. All rights reserved.
                 &nbsp;·&nbsp;
-                CrowAgent™ is an unregistered trademark.
+                CrowAgent™ is a trademark of Aparajita Parihar. Registration pending.
                 &nbsp;·&nbsp;
                 Not licensed for commercial use.
             </div>
@@ -626,10 +636,10 @@ def render_footer() -> None:
 
 
 # ── Streamlit page configuration ─────────────────────────────────────────────
-# Imported by main.py and passed directly to st.set_page_config().
+# Fallback page config values; main.py calls set_page_config() directly.
 PAGE_CONFIG = {
     "page_title": "CrowAgent™ Platform",
-    "page_icon": get_icon_uri() or "🌿",
+    "page_icon": "assets/favicon.png",
     "layout": "wide",
     "initial_sidebar_state": "collapsed",
     "menu_items": {
@@ -640,7 +650,9 @@ PAGE_CONFIG = {
             "© 2026 Aparajita Parihar. All rights reserved.\n\n"
             "⚠️ PROTOTYPE: Results are indicative only and based on simplified "
             "physics models. Not for use as the sole basis for investment decisions.\n\n"
-            "CrowAgent™ is an unregistered trademark · UK IPO Class 42 pending"
+            "CrowAgent™ is a trademark of Aparajita Parihar.\n"
+            "Trademark application filed with the UK Intellectual Property Office (UK IPO), Class 42.\n"
+            "Registration pending."
         ),
     },
 }
